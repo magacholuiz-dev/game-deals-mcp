@@ -1,0 +1,27 @@
+[project]
+name = "game-deals-mcp"
+version = "0.1.0"
+description = "MCP para rastrear preco de jogos e hardware no Brasil, com veredito historico"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]>=2.0",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+]
+
+[project.scripts]
+game-deals-mcp = "game_deals.server:main"
+game-deals-collect = "game_deals.collector:main"
+game-deals-web = "game_deals.web:main"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/game_deals"]

@@ -1,0 +1,13 @@
+.env
+*.db
+*.db-journal
+__pycache__/
+.venv/
+.pytest_cache/
+*.pyc
+.certs/
+*.db-wal
+*.db-shm
+*.log
+.DS_Store
+.env.tmp

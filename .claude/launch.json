@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "game-deals-demo",
+      "runtimeExecutable": "./scripts/demo.sh",
+      "runtimeArgs": [],
+      "port": 8787
+    }
+  ]
+}

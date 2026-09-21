@@ -244,7 +244,10 @@ def tick(now: int | None = None, *, sources: list[str] | None = None,
                 out = Outcome(jobs.FAILED, attempted=1, failed=1,
                               error=f"{type(e).__name__}: {e}",
                               error_kind=jobs.classify_error("", e))
-            out.latency_ms = int((time.perf_counter() - t0) * 1000)
+            # Latency is per ITEM, the same unit the store sources report. A job
+            # that makes 20 API calls in 9 s is not "9 s of latency": recording
+            # the total made a healthy weekly RAWG refresh look degraded.
+            out.latency_ms = int((time.perf_counter() - t0) * 1000) // max(1, out.attempted)
             jobs.finish(run_id, out.status, items=out.items, attempted=out.attempted,
                         failed=out.failed, latency_ms=out.latency_ms, error=out.error,
                         error_kind=out.error_kind, now=now)

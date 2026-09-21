@@ -17,7 +17,7 @@ import unicodedata
 from dataclasses import dataclass
 
 from . import db, providers, ratings
-from .matching import anchors, has_anchors
+from .matching import same_game
 from .collector import coletar_sinais, refresh_product
 from .models import brl
 from .providers.nintendo import NATIVO, RETRO
@@ -46,7 +46,26 @@ def _bate(pedido: str, achado: str) -> bool:
     "Mario Kart 8 Deluxe" devolve "Mario Kart World" como primeiro resultado.
     Aceitar cegamente colava o preço de um jogo no card de outro — R$ 439,90 do
     World virava o preço do 8 Deluxe. Exigimos os tokens distintivos."""
-    return has_anchors(achado, anchors(pedido))
+    return same_game(pedido, achado)
+
+
+def _pid_for(titulo: str, plataforma: str) -> str:
+    """Id do produto. O mesmo título em plataformas diferentes NÃO é o mesmo
+    produto: Zelda BotW no Switch 1 (R$ 329,90) e a Switch 2 Edition (R$ 389,90)
+    dividiam um id e um alias por fonte, e a série de preços misturava os dois."""
+    pid = slug(titulo)
+    ex = db.get_product(pid)
+    if ex and plataforma and ex["platform"] and ex["platform"] != plataforma:
+        return f"{pid}-{plataforma}"
+    return pid
+
+
+def _existe_no_switch2(titulo: str) -> bool:
+    """O RAWG lista o jogo como "Switch", que não diz se há versão de Switch 2.
+    Quem diz é o catálogo da Nintendo, filtrado por Switch 2."""
+    nin = providers.get("nintendo")
+    return any(_bate(titulo, a.title)
+               for a in nin.search(titulo, 5, apenas_switch2=True))
 
 
 def _preco(pid: str, titulo: str, plataforma: str) -> tuple[int | None, str, int]:
@@ -57,7 +76,7 @@ def _preco(pid: str, titulo: str, plataforma: str) -> tuple[int | None, str, int
         achados = nin.search(titulo, 5, apenas_switch2=(plataforma == "switch2"))
         casou = next((a for a in achados if _bate(titulo, a.title)), None)
         if casou:
-            db.add_alias(pid, "nintendo", casou.source_id)
+            db.replace_alias(pid, "nintendo", casou.source_id)
             ofertas = refresh_product(pid, quiet=True)
             if ofertas:
                 return min(o.price_cents for o in ofertas), "eshop", 0
@@ -86,7 +105,9 @@ def adiciona(titulo_pedido: str, plataforma: str = "", regra: str = "new_low",
             return None
         ficha = achadas[0]
 
-    pid = slug(ficha.titulo)
+    if plataforma == "switch2" and not _existe_no_switch2(ficha.titulo):
+        return None                    # não há versão de Switch 2: não vira produto
+    pid = _pid_for(ficha.titulo, plataforma)
     compat = NATIVO if plataforma == "switch2" else (
         RETRO if plataforma == "switch" else "")
     db.upsert_product(pid, ficha.titulo, "game", plataforma or "", ficha.imagem,

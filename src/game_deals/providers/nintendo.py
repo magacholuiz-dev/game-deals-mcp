@@ -32,7 +32,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from .. import config, http
-from ..matching import anchors, has_anchors, negative_hits, normalize, tokens
+from ..matching import (anchors, has_anchors, negative_hits, normalize,
+                        same_game, tokens)
 from ..models import Listing, Offer
 from .base import cents
 
@@ -277,6 +278,9 @@ class Nintendo:
             return None
         if negative_hits(page.name, query):
             self.last_error = f"page {slug!r} looks like an add-on: {page.name!r}"
+            return None
+        if not same_game(query, page.name):
+            self.last_error = f"page {slug!r} is a different game: {page.name!r} vs {query!r}"
             return None
         cls = classify(page.name, slug=slug)
         if wanted_tier and cls.tier != wanted_tier:

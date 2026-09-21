@@ -302,7 +302,9 @@ def test_casamento_de_titulo_rejeita_jogo_diferente():
     assert _bate("Mario Kart 8 Deluxe", "Mario Kart 8 Deluxe")
     assert not _bate("Mario Kart 8 Deluxe", "Mario Kart World")
     assert not _bate("Grand Theft Auto VI", "Grand Theft Auto V")
-    assert _bate("Grand Theft Auto VI", "Jogo Grand Theft Auto VI Standard")
+    # a store CATALOG name may add an edition; a retail listing with a "Jogo"
+    # prefix is match_offer's job (tests/test_matching.py), not _bate's
+    assert _bate("Grand Theft Auto VI", "Grand Theft Auto VI Standard Edition")
     assert not _bate("The Legend of Zelda: Ocarina of Time",
                      "The Legend of Zelda: Breath of the Wild")
 

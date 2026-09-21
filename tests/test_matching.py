@@ -153,3 +153,28 @@ def test_collector_price_filter_uses_explicit_band_then_median():
     two = [S(price_cents=c) for c in (1583, 34417)]
     assert [x.price_cents for x in filtrar_por_preco(two, 44990, 15746)] == [34417]
     assert len(filtrar_por_preco(two)) == 2            # no band possible: keep all
+
+
+SAME_GAME = [
+    ("Mario Kart World", "Mario Kart™ World", True),
+    ("Disco Elysium", "Disco Elysium: The Final Cut", True),
+    ("Divinity: Original Sin 2", "Divinity: Original Sin 2 – Definitive Edition", True),
+    ("The Witcher 3: Wild Hunt", "The Witcher 3: Wild Hunt – Complete Edition", True),
+    ("Resident Evil 7: Biohazard", "Resident Evil 7 Biohazard Gold Edition", True),
+    ("Legend of Zelda: Breath of the Wild", "The Legend of Zelda™: Breath of the Wild", True),
+    ("No Man's Sky Switch 2 Edition", "No Man's Sky – Nintendo Switch™ 2 Edition", True),
+    ("Hades", "Hades", True),
+    # a different game that merely contains the words: these were wired up wrongly
+    ("Resident Evil 2", "Resident Evil Revelations 2", False),
+    ("The Legend of Zelda", "The Legend of Zelda: Ocarina of Time", False),
+    ("Super Mario Bros.", "Super Mario Bros. Wonder – Nintendo Switch 2 Edition", False),
+    ("Hollow Knight", "Hollow Knight: Silksong", False),
+    ("Mario Kart 8 Deluxe", "Mario Kart World", False),
+    ("Grand Theft Auto V", "Grand Theft Auto V: Premium Edition", True),
+]
+
+
+@pytest.mark.parametrize("asked,found,expected", SAME_GAME)
+def test_same_game_accepts_versions_and_rejects_other_games(asked, found, expected):
+    from game_deals.matching import same_game
+    assert same_game(asked, found) is expected, (asked, found)

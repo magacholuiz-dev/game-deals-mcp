@@ -165,3 +165,14 @@ def test_serve_loops_until_stopped_and_survives_a_bad_tick(world, monkeypatch):
     slept = []
     sch.serve(1, sleep=slept.append, stop=lambda: len(slept) >= 3)
     assert len(calls) == 3                          # kept going after the exception
+
+
+def test_job_latency_is_recorded_per_item_not_as_the_total(world, monkeypatch):
+    """A 9 s refresh of 20 RAWG records is 450 ms each, not a slow source."""
+    ticks = iter([0.0, 9.0])
+    monkeypatch.setattr(sch.time, "perf_counter", lambda: next(ticks))
+    monkeypatch.setattr(sch, "job_names", lambda: {"rawg": "other"})
+    monkeypatch.setattr(sch, "_other_runner",
+                        lambda name: (lambda now: sch.Outcome(jobs.OK, items=20, attempted=20)))
+    sch.tick(NOW)
+    assert jobs.last_run("rawg")["latency_ms"] == 450

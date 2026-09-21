@@ -177,7 +177,9 @@ def summarize(items: list[SourceHealth]) -> dict[str, Any]:
     counts: dict[str, int] = {}
     for h in items:
         counts[h.status] = counts.get(h.status, 0) + 1
-    worst = min((h.status for h in items if h.status != INACTIVE),
-                key=lambda s: order[s], default=UNKNOWN)
+    # A source that never ran (nothing tracked on Steam, say) says nothing about
+    # the others. "No data" is the overall answer only when NOTHING has data.
+    judged = [h.status for h in items if h.status in (BROKEN, DEGRADED, HEALTHY)]
+    worst = min(judged, key=lambda s: order[s]) if judged else UNKNOWN
     return {"overall": worst, "overall_label": LABEL[worst], "counts": counts,
             "sources": [h.dict() for h in sorted(items, key=lambda h: order[h.status])]}

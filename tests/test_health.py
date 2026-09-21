@@ -119,3 +119,13 @@ def test_unconfigured_providers_are_inactive_and_say_why(monkeypatch):
     inactive = [h for h in res if h.status == health.INACTIVE]
     assert {h.source for h in inactive} >= {"itad", "mercadolivre", "amazon", "shopee"}
     assert all(h.reasons and h.reasons[0] for h in inactive)
+
+
+def test_a_source_without_data_does_not_drag_the_overall_status_down():
+    hs = [health.SourceHealth("nintendo", health.HEALTHY),
+          health.SourceHealth("steam", health.UNKNOWN),
+          health.SourceHealth("itad", health.INACTIVE)]
+    assert health.summarize(hs)["overall"] == health.HEALTHY
+    assert health.summarize([health.SourceHealth("steam", health.UNKNOWN)])["overall"] == health.UNKNOWN
+    hs.append(health.SourceHealth("x", health.DEGRADED))
+    assert health.summarize(hs)["overall"] == health.DEGRADED

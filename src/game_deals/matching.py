@@ -243,3 +243,42 @@ def price_band(prices: list[int], reference_cents: int | None = None,
 
 def within_band(price: int, band: tuple[int, int] | None) -> bool:
     return band is None or band[0] <= price <= band[1]
+
+
+# --------------------------------------------------------------- same game
+
+# Words that name a VERSION of a game, not a different game. What may follow the
+# requested name. "remake" and "remaster" are deliberately absent: a Remake is
+# a different product with its own price history.
+EDITION_WORDS = {
+    "edition", "edicao", "definitive", "complete", "completa", "final", "cut",
+    "goty", "year", "gold", "enhanced", "ultimate", "deluxe", "standard",
+    "special", "collectors", "collector", "directors", "director", "anniversary",
+    "digital", "version", "versao", "remastered", "upgrade", "pack", "plus",
+    "premium", "legacy", "expanded", "hd",
+}
+
+
+def _identity_tokens(title: str) -> list[str]:
+    stripped = _EDITION_MARKERS.sub(" ", normalize(title))
+    toks = stripped.split()
+    while toks and toks[0] in ("the", "a", "o", "os", "as"):
+        toks = toks[1:]                 # "Legend of Zelda" == "The Legend of Zelda"
+    return toks
+
+
+def same_game(requested: str, found: str) -> bool:
+    """Is `found` the game that was asked for, or a different one that merely
+    contains its words?
+
+    The requested name must be the START of the found name, and whatever follows
+    may only be an edition word. That accepts "Disco Elysium" for "Disco Elysium:
+    The Final Cut" and "Mario Kart World" for "Mario Kart(tm) World", and rejects
+    "Resident Evil Revelations 2" for "Resident Evil 2", "Zelda: Ocarina of Time"
+    for "The Legend of Zelda", and "Super Mario Bros. Wonder" for "Super Mario
+    Bros." A string cannot tell every case apart, so it errs toward refusing: a
+    missing match costs a search, a wrong one records another game's price."""
+    q, f = _identity_tokens(requested), _identity_tokens(found)
+    if not q or f[:len(q)] != q:
+        return False
+    return all(t in EDITION_WORDS or t in NOISE for t in f[len(q):])

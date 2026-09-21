@@ -66,10 +66,27 @@ POSITIVE_PHRASES = ("midia fisica", "midia digital", "edicao standard",
                     "edicao deluxe", "edicao ultimate")
 
 
+# "Nintendo Switch 2 Edition" says WHICH VERSION of a game a listing is, not WHICH
+# GAME it is. Left in, the "2" became a required numeral and the trailing words
+# pushed the real name out of the anchors. Version is checked separately, by
+# the classifier in providers/nintendo.py.
+_EDITION_MARKERS = re.compile(
+    r"\b(?:nintendo\s+)?switch\s*2\s+edition\b|\bedicao\s+(?:para\s+)?(?:o\s+)?switch\s*2\b"
+    r"|\bupgrade\s+pack\b|\bpacote\s+de\s+(?:upgrade|melhoria)\b")
+
+
 def normalize(text: str) -> str:
     """Lowercase, strip accents, turn punctuation into single spaces."""
+    # Drop trademark symbols BEFORE NFKD: compatibility decomposition turns the
+    # trade mark sign into the letters "TM", so "Mario Kart™ World" became
+    # "mario karttm world" and never matched. Found with real Nintendo pages.
+    text = text.replace("™", "").replace("®", "").replace("©", "")
     t = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
     t = t.replace("&", " and ")
+    # An apostrophe belongs to the word: "Man's" -> "mans", the same form the
+    # Nintendo slug uses ("no-mans-sky"). Turning it into a space split the word
+    # into "man" and "s" and the two sides never agreed.
+    t = re.sub(r"[\u0027\u2019\u2018`]", "", t)
     return re.sub(r"[^a-z0-9]+", " ", t).strip()
 
 
@@ -89,7 +106,8 @@ class Anchors:
 
 
 def anchors(title: str) -> Anchors:
-    words = [w for w in tokens(title) if w not in NOISE]
+    stripped = _EDITION_MARKERS.sub(" ", normalize(title))
+    words = [w for w in stripped.split() if w not in NOISE]
     if not words:
         return Anchors((), ())
     must: list[str] = []

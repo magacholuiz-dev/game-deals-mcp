@@ -1,0 +1,176 @@
+{
+  "schema": 1,
+  "fixtures": {
+    "nintendo/price_br_eu_nsuid_nms.json": {
+      "source": "nintendo",
+      "url": "https://api.ec.nintendo.com/v1/price?country=BR&lang=pt&ids=70010000099138",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "8cff622d849f116e61119711f0f4522b236fd5331ac42fefe28c139cdf5935ca",
+      "trimmed": null
+    },
+    "nintendo/price_br_eu_nsuid_not_found.json": {
+      "source": "nintendo",
+      "url": "https://api.ec.nintendo.com/v1/price?country=BR&lang=pt&ids=70010000096802",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "037d11e18a87709a9560bd612c931f6444d6037c58578e896e655dfc2cdec8d0",
+      "trimmed": null
+    },
+    "nintendo/price_br_found.json": {
+      "source": "nintendo",
+      "url": "https://api.ec.nintendo.com/v1/price?country=BR&lang=pt&ids=70010000095431%2C70010000099217",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "b862431dff4544b6b525d907acffdda30e5200eb5390578cb5b277d5dfd3fc2b",
+      "trimmed": null
+    },
+    "nintendo/price_br_zelda_switch1.json": {
+      "source": "nintendo",
+      "url": "https://api.ec.nintendo.com/v1/price?country=BR&lang=pt&ids=70010000000025",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "c9938943fb90559b5936b4a8f611295ca9d2cdb7be5b7022c7fec777132f8351",
+      "trimmed": null
+    },
+    "nintendo/product_mario_kart_world_switch2.html": {
+      "source": "nintendo",
+      "url": "https://www.nintendo.com/pt-br/store/products/mario-kart-world-switch-2/",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "196f7c3a61db4bcc0867952c3149c49a9a15171765f9b9fd4f3d6cd1833e3183",
+      "trimmed": "JSON-LD blocks only"
+    },
+    "nintendo/product_no_mans_sky_switch2_edition.html": {
+      "source": "nintendo",
+      "url": "https://www.nintendo.com/pt-br/store/products/no-mans-sky-nintendo-switch-2-edition-switch-2/",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "84222e2909ef9525ebf760dd3e1a23917565ec1ed01cf0fec73cd50cb4897950",
+      "trimmed": "JSON-LD blocks only"
+    },
+    "nintendo/product_zelda_botw_switch1.html": {
+      "source": "nintendo",
+      "url": "https://www.nintendo.com/pt-br/store/products/the-legend-of-zelda-breath-of-the-wild-switch/",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "43d2a26578797a3036ffaac4fbf8cdce85905d2a1c8260ac038b561c59396f33",
+      "trimmed": "JSON-LD blocks only"
+    },
+    "nintendo/robots.txt": {
+      "source": "nintendo",
+      "url": "https://www.nintendo.com/robots.txt",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "9f7c4501d6487be15b78c3e5bb84f2355b95705def720c1d43d17f0fc92d9ccc",
+      "trimmed": null
+    },
+    "nintendo/sitemap_pt_br_store.xml": {
+      "source": "nintendo",
+      "url": "https://www.nintendo.com/pt-br/store/sitemap.xml",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "436a33d588620e8c7486c14a599403d196f6767f12c039d040ec6de7b2cc28ee",
+      "trimmed": "URLs filtered to the keywords the tests use"
+    },
+    "nintendo/solr_switch2_edition.json": {
+      "source": "nintendo",
+      "url": "https://search.nintendo-europe.com/en/select?q=no+man%27s+sky&fq=type%3AGAME+AND+system_type%3A%2Aswitch2%2A&wt=json&rows=3",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "0e9dae301babb7528e4ee83c831a994e87e622cdf7d1f40935f1074cfe7875ea",
+      "trimmed": null
+    },
+    "nintendo/solr_switch2_native.json": {
+      "source": "nintendo",
+      "url": "https://search.nintendo-europe.com/en/select?q=mario+kart+world&fq=type%3AGAME&wt=json&rows=3",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "28f6454dd4ac3fa7cb06aee9335894710db0532d5a245026da5999ec3e504c62",
+      "trimmed": null
+    },
+    "playstation/category_deals_shell.html": {
+      "source": "playstation",
+      "url": "https://store.playstation.com/pt-br/category/3f772501-f6f8-49b7-abac-874a88ca4897/1",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "8deb0c1d0121c63dd22c43cf5995355452a9e3cc2216d78344c18fcfa6be0e42",
+      "trimmed": "__NEXT_DATA__ only"
+    },
+    "playstation/concept_gta6_editions.html": {
+      "source": "playstation",
+      "url": "https://store.playstation.com/pt-br/concept/10000730",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "54160f998eeccbd495df738f5e1ad205d3fa3e88f38ee76daeaa112e9e756395",
+      "trimmed": "JSON-LD and env:* state scripts only"
+    },
+    "playstation/concept_ronin_on_sale.html": {
+      "source": "playstation",
+      "url": "https://store.playstation.com/pt-br/concept/10003386",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "006dd25661191e8a10ce47270f1b67b1138e54136ced6f3ee1208063ac616826",
+      "trimmed": "JSON-LD and env:* state scripts only"
+    },
+    "playstation/product_gta6_standard.html": {
+      "source": "playstation",
+      "url": "https://store.playstation.com/pt-br/product/EP1004-PPSA01547_00-GTAVISTANDARD001",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "7bb5fd8080852a09fdcaa0468150cb3ffe6dc79e3415ba34f96687c81fee63fd",
+      "trimmed": "JSON-LD and env:* state scripts only"
+    },
+    "playstation/robots.txt": {
+      "source": "playstation",
+      "url": "https://store.playstation.com/robots.txt",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "a1e975d3e5641496385e93b9f214e6bf7913b9e18e0f6a03ca5fe3db15c94ff7",
+      "trimmed": null
+    },
+    "promobit/listing_promocoes_games.html": {
+      "source": "promobit",
+      "url": "https://www.promobit.com.br/promocoes/games/",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "28ad56ef7b51bdfcc23a0cef891527a16128093701390979e7c7eb412d73d9b3",
+      "trimmed": "__NEXT_DATA__ only"
+    },
+    "promobit/robots_api.txt": {
+      "source": "promobit",
+      "url": "https://api.promobit.com.br/robots.txt",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "a50dd153c0bef8cd6744c150207c7a629e1c630c62374cab1c9eea1ebd1d33f5",
+      "trimmed": null
+    },
+    "promobit/robots_www.txt": {
+      "source": "promobit",
+      "url": "https://www.promobit.com.br/robots.txt",
+      "status": "live",
+      "recorded_at": "2026-09-21",
+      "http_status": 200,
+      "sha256": "bbbe6f4ba07ddd2b98b27681355606058087be9d1d517cc655cf1fea6b1ec83f",
+      "trimmed": null
+    }
+  }
+}

@@ -1,0 +1,41 @@
+User-agent: *
+
+Allow: *.css
+Allow: *.js
+
+# Explicitly allows these pages because some dynamic pages with similar
+# path are disallowed
+Allow: /promocoes/selecao/doubleeleven/
+
+# Disallow for Promobit 2.0
+Disallow: /ultimos-comentarios/
+Disallow: /notificacoes/
+Disallow: /minhas-ofertas/
+Disallow: /configuracoes/
+Disallow: /buscar/*
+Disallow: /buscar*
+Disallow: /promocoes/selecao/*
+Disallow: /promocoes/nova-oferta/
+Disallow: /cupons/novo-cupom/
+Disallow: /forum/novo-topico/
+Disallow: /email-verificado/*
+Disallow: /configuracoes/
+Disallow: /usuario/*
+Disallow: /api/*
+
+# Disallow for Old Promobit
+Disallow: /mensagens/
+Disallow: /Wplayer/*
+Disallow: /CommentRedirect/*
+Disallow: /commentredirect/*
+Disallow: /CommentRedirect/
+Disallow: /home/ver-perfil/*
+Disallow: /Home/ver-perfil/*
+Disallow: /Buscar/*
+Disallow: /buscar/*
+Disallow: /oferta/check/*
+Disallow: /nps/*
+Disallow: /v2*
+Disallow: /User/logout*
+
+Sitemap: https://www.promobit.com.br/sitemap.xml

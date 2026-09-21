@@ -1,0 +1,152 @@
+User-agent: *
+Allow: /
+
+DaumWebMasterTool: 32aa5c28d33b91d5b7ca65e51ab5af74e84941e2c30d294caa1a3dc55aea1191:/KZk3GCODdcSqsR4mp1dtQ==
+
+# Blocked Bots
+User-agent: Kangaroo Bot
+Disallow: /
+
+User-agent: Nutch
+Disallow: /
+
+User-agent: Omgili
+Disallow: /
+
+User-agent: Omgilibot
+Disallow: /
+
+User-agent: PanguBot
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: Timpibot
+Disallow: /
+
+User-agent: Webzio-Extended
+Disallow: /
+
+User-agent: AI2Bot
+Disallow: /
+
+User-agent: AI2Bot-Dolma
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: Diffbot
+Disallow: /
+
+User-agent: FacebookBot
+Disallow: /
+
+User-agent: FriendlyCrawler
+Disallow: /
+
+User-agent: ICC-Crawler
+Disallow: /
+
+User-agent: GPTBot
+Allow: /jp/nintendo-direct/description/
+Disallow: /
+
+User-agent: Claude-Web
+Allow: /jp/nintendo-direct/description/
+Disallow: /
+
+User-agent: Claudebot
+Allow: /jp/nintendo-direct/description/
+Disallow: /
+
+User-agent: Google-Extended
+Allow: /jp/nintendo-direct/description/
+Disallow: /
+
+User-agent: Applebot-Extended
+Allow: /jp/nintendo-direct/description/
+Disallow: /
+
+User-agent: Meta-ExternalAgent
+Allow: /jp/nintendo-direct/description/
+Disallow: /
+
+User-agent: cohere-ai
+Allow: /jp/nintendo-direct/description/
+Disallow: /
+
+User-agent: cohere-training-data-crawler
+Allow: /jp/nintendo-direct/description/
+Disallow: /
+
+# Existing restrictions
+
+User-agent: *
+Disallow: /sg/support/qa-list
+Disallow: /my/support/qa-list
+Disallow: /th/support/qa-list
+Disallow: /ph/support/qa-list
+
+# Sitemaps
+
+Sitemap: https://www.nintendo.com/au/sitemap/0.xml
+Sitemap: https://www.nintendo.com/jp/data/sitemap/sitemap.xml
+Sitemap: https://www.nintendo.com/jp/topics/sitemap.xml
+Sitemap: https://www.nintendo.com/jp/nintendo-direct/description/sitemap.xml
+Sitemap: https://www.nintendo.com/kr/sitemap.xml
+Sitemap: https://www.nintendo.com/hk/sitemap.xml
+Sitemap: https://www.nintendo.com/tw/sitemap.xml
+Sitemap: https://www.nintendo.com/sg/data/sitemap/sitemap.xml
+Sitemap: https://www.nintendo.com/th/data/sitemap/sitemap.xml
+Sitemap: https://www.nintendo.com/my/data/sitemap/sitemap.xml
+Sitemap: https://www.nintendo.com/ph/data/sitemap/sitemap.xml
+Sitemap: https://www.nintendo.com/us/whatsnew/sitemap.xml
+Sitemap: https://www.nintendo.com/us/nintendo-direct/sitemap.xml
+Sitemap: https://www.nintendo.com/us/store/sitemap.xml
+Sitemap: https://www.nintendo.com/us/news/sitemap.xml
+Sitemap: https://www.nintendo.com/us/sitemap.xml
+Sitemap: https://www.nintendo.com/en-ca/whatsnew/sitemap.xml
+Sitemap: https://www.nintendo.com/en-ca/nintendo-direct/sitemap.xml
+Sitemap: https://www.nintendo.com/en-ca/store/sitemap.xml
+Sitemap: https://www.nintendo.com/en-ca/news/sitemap.xml
+Sitemap: https://www.nintendo.com/en-ca/sitemap.xml
+Sitemap: https://www.nintendo.com/fr-ca/whatsnew/sitemap.xml
+Sitemap: https://www.nintendo.com/fr-ca/store/sitemap.xml
+Sitemap: https://www.nintendo.com/fr-ca/news/sitemap.xml
+Sitemap: https://www.nintendo.com/fr-ca/sitemap.xml
+Sitemap: https://www.nintendo.com/pt-br/whatsnew/sitemap.xml
+Sitemap: https://www.nintendo.com/pt-br/store/sitemap.xml
+Sitemap: https://www.nintendo.com/pt-br/news/sitemap.xml
+Sitemap: https://www.nintendo.com/pt-br/sitemap.xml
+Sitemap: https://www.nintendo.com/es-mx/whatsnew/sitemap.xml
+Sitemap: https://www.nintendo.com/es-mx/store/sitemap.xml
+Sitemap: https://www.nintendo.com/es-mx/news/sitemap.xml
+Sitemap: https://www.nintendo.com/es-mx/sitemap.xml
+Sitemap: https://www.nintendo.com/es-pe/whatsnew/sitemap.xml
+Sitemap: https://www.nintendo.com/es-pe/store/sitemap.xml
+Sitemap: https://www.nintendo.com/es-pe/news/sitemap.xml
+Sitemap: https://www.nintendo.com/es-pe/sitemap.xml
+Sitemap: https://www.nintendo.com/es-cl/whatsnew/sitemap.xml
+Sitemap: https://www.nintendo.com/es-cl/store/sitemap.xml
+Sitemap: https://www.nintendo.com/es-cl/news/sitemap.xml
+Sitemap: https://www.nintendo.com/es-cl/sitemap.xml
+Sitemap: https://www.nintendo.com/es-co/whatsnew/sitemap.xml
+Sitemap: https://www.nintendo.com/es-co/store/sitemap.xml
+Sitemap: https://www.nintendo.com/es-co/news/sitemap.xml
+Sitemap: https://www.nintendo.com/es-co/sitemap.xml
+Sitemap: https://www.nintendo.com/es-ar/whatsnew/sitemap.xml
+Sitemap: https://www.nintendo.com/es-ar/store/sitemap.xml
+Sitemap: https://www.nintendo.com/es-ar/news/sitemap.xml
+Sitemap: https://www.nintendo.com/es-ar/sitemap.xml
+
+
+
+#Nintendo Co., Ltd. and its affiliated companies ("Nintendo") therefore explicitly reserve all their rights in any content made available, including, without limitation, content made available by Nintendo on websites, social media pages and any other platforms, as well as in Nintendo games, video content, and social media posts.
+#Any use of such content for the development, training, programming, improvement and/or enhancement of artificial intelligence (including, but not limited to, generative AI systems), web scraping, machine learning, or any form of text or data mining by any means, is strictly prohibited, unless specifically and explicitly authorized in writing by the Nintendo company that owns the respective rights. 
+#This statement is a reservation of rights (also known as an "opt-out") with respect to text and data mining, to the extent that this concept is recognised by applicable law in all jurisdictions worldwide, such as Article 4 (3) of Directive (EU) 2019/790 and national implementation laws in the EU region. 
+#It applies to any Nintendo content including, without limitation, video games, visual displays of video games, characters, brands, artworks, images, videos, music, dialogue, story, and any Nintendo works or data.

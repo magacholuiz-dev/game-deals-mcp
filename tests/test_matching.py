@@ -11,6 +11,9 @@ from game_deals.matching import (
 
 # (offer title, requested title)
 SHOULD_MATCH = [
+    # real Nintendo product names carry the trade mark sign
+    ("Mario Kart™ World", "Mario Kart World"),
+    ("No Man's Sky – Nintendo Switch™ 2 Edition", "No Man's Sky"),
     ("Jogo Grand Theft Auto VI (GTA 6) PS5 - Code in Box", "Grand Theft Auto VI"),
     ("Jogo Grand Theft Auto VI Edição Standard PS5 - Pré Venda", "Grand Theft Auto VI"),
     ("Jogo Grand Theft Auto GTA VI 6, PS5 - TT0002", "Grand Theft Auto VI"),
@@ -71,6 +74,14 @@ def test_noise_is_rejected_for_the_right_reason(offer, query, why):
 
 def test_corpus_is_large_enough():
     assert len(SHOULD_MATCH) + len(SHOULD_REJECT) >= 10
+
+
+def test_apostrophes_do_not_split_words():
+    """Titles say "Man's", slugs say "mans": both must normalize the same."""
+    from game_deals.matching import normalize
+    assert normalize("No Man's Sky") == normalize("no-mans-sky") == "no mans sky"
+    assert match_offer("no mans sky nintendo switch 2 edition switch 2",
+                       "No Man's Sky Switch 2 Edition").ok
 
 
 def test_numerals_compare_as_numbers():

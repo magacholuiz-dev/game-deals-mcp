@@ -1,0 +1,22 @@
+# Allow GoogleBot related UAs to access. There are potential CORS issues related to disallowing them.
+# See: https://support.google.com/manufacturers/answer/7349854?hl=en
+User-agent: Googlebot
+Disallow:
+
+User-agent: AdsBot-Google
+Disallow:
+
+User-agent: Googlebot-Image
+Disallow:
+
+# Rastreadores de preview de link (WhatsApp, Facebook, Telegram, Twitter) leem
+# /v4/redirect/{hash} para montar o card das mensagens enviadas aos grupos. Esta
+# API e Disallow por padrao, e o preview e a unica coisa aqui feita para ser lida
+# por rastreador. Sem esta excecao, a pagina de Open Graph existe mas ninguem a
+# busca, e o card sai com as tags do destino final.
+#
+# A rota nao expoe conteudo indexavel: ela responde HTML so a rastreador de
+# preview, e a pagina tem noindex,nofollow.
+User-Agent: *
+Allow: /v4/redirect/
+Disallow: /

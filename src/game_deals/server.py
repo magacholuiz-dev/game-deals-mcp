@@ -12,7 +12,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from . import alerts as alerts_mod
-from . import collector, db, health, providers, ratings
+from . import collector, db, health, intel, providers, ratings
 from .models import brl
 from .verdict import evaluate as verdict_for
 
@@ -390,6 +390,118 @@ def pending_alerts(acknowledge: bool = False) -> dict:
         db.ack_alerts([r["id"] for r in rows])
     return {"total": len(out), "alertas": out,
             "marcados_como_lidos": bool(acknowledge and out)}
+
+
+# ---------------------------------------------------------- price intelligence
+
+def _pid(product: str) -> str | dict:
+    pid = db.resolve(product)
+    return pid or {"erro": f"produto não encontrado: {product}",
+                   "dica": "use list_tracked para ver os ids"}
+
+
+@mcp.tool()
+def aggregate_verdict(product: str) -> dict:
+    """Menor preço ATUAL entre as lojas oficiais e como ele se compara com todo
+    o histórico de todas as lojas. Preços antigos (mais de 3 ciclos da própria
+    fonte) não contam como oferta ativa, mas continuam contando como histórico."""
+    pid = _pid(product)
+    return pid if isinstance(pid, dict) else intel.veredito_agregado(pid).dict()
+
+
+@mcp.tool()
+def buy_or_wait(product: str) -> dict:
+    """Comprar agora, esperar ou neutro, com a justificativa e a incerteza.
+
+    Regras, em ordem: jogo não lançado é neutro; promoção grande a até 30 dias
+    com desconto raso manda esperar; menor preço com histórico manda comprar;
+    desconto igual ou acima do típico do publisher/plataforma manda comprar;
+    preço que já esteve menor há pouco manda esperar. Datas de evento só
+    estimadas aumentam a incerteza."""
+    pid = _pid(product)
+    return pid if isinstance(pid, dict) else intel.recomendar_compra(pid).dict()
+
+
+@mcp.tool()
+def opportunity_score(product: str) -> dict:
+    """Nota de 0 a 100: desconto real sobre o preço TÍPICO (não o de tabela),
+    nota da crítica, popularidade, valor por hora de jogo e prioridade na
+    wishlist. Entradas ausentes ficam de fora e `cobertura` diz quanto do peso
+    tem dados."""
+    pid = _pid(product)
+    return pid if isinstance(pid, dict) else intel.pontuar_oportunidade(pid).dict()
+
+
+@mcp.tool()
+def budget_plan(limit_reais: float, products: list[str] | None = None,
+                respect_wait: bool = True, min_score: float = 0.0) -> dict:
+    """Escolhe o que comprar com um orçamento em reais, maximizando a soma das
+    notas de oportunidade (solução exata, em centavos inteiros: nunca estoura o
+    orçamento). Por padrão segura o que a recomendação manda esperar e lista o
+    motivo. Sem `products`, usa a wishlist vigiada."""
+    ids = None
+    if products:
+        ids = []
+        for x in products:
+            pid = _pid(x)
+            if isinstance(pid, dict):
+                return pid
+            ids.append(pid)
+    try:
+        return intel.planejar_orcamento(limit_reais, ids, respeitar_espere=respect_wait,
+                                        score_minimo=min_score).dict()
+    except ValueError as e:
+        return {"erro": str(e)}
+
+
+@mcp.tool()
+def compare_editions(products: list[str]) -> dict:
+    """Standard x Deluxe x Ultimate do mesmo jogo: diferença de preço, se a
+    edição maior já custou o preço da padrão, e o maior desconto já visto.
+    O conteúdo bônus NÃO é avaliado, só preço e histórico."""
+    ids = []
+    for x in products:
+        pid = _pid(x)
+        if isinstance(pid, dict):
+            return pid
+        ids.append(pid)
+    return intel.comprar_edicoes(ids)
+
+
+@mcp.tool()
+def compare_upgrade(base_switch1: str, upgrade_pack: str, switch2_full: str,
+                    owns_base: bool = False) -> dict:
+    """Jogo de Switch 1 + Upgrade Pack de Switch 2 contra a edição completa de
+    Switch 2: qual caminho é mais barato. Se você já tem o jogo, só o pacote conta."""
+    ids = []
+    for x in (base_switch1, upgrade_pack, switch2_full):
+        pid = _pid(x)
+        if isinstance(pid, dict):
+            return pid
+        ids.append(pid)
+    return intel.comparar_upgrade_switch2(*ids, possui_base=owns_base)
+
+
+@mcp.tool()
+def compare_media(product: str) -> dict:
+    """Mídia física (ofertas postadas por usuários, recentes, sem frete) contra
+    o preço digital da loja oficial."""
+    pid = _pid(product)
+    return pid if isinstance(pid, dict) else intel.comparar_midia(pid)
+
+
+@mcp.tool()
+def set_wishlist_priority(product: str, priority: int) -> dict:
+    """Prioridade na wishlist: 0 normal, 1 alta, 2 imperdível. Entra na nota de
+    oportunidade."""
+    pid = _pid(product)
+    if isinstance(pid, dict):
+        return pid
+    try:
+        db.set_priority(pid, priority)
+    except ValueError as e:
+        return {"erro": str(e)}
+    return {"product_id": pid, "prioridade": priority}
 
 
 @mcp.tool()

@@ -349,3 +349,438 @@ def recomendar_compra(product_id: str, today: dt.date | None = None,
                "nem o desconto atinge o típico")
     return Recomendacao(product_id, NEUTRO, why, min(1, round(u, 2)),
                         _uncertainty_text(u), facts)
+
+
+# ------------------------------------------------- 3. opportunity score
+
+WEIGHTS = {"desconto": 0.35, "nota": 0.25, "popularidade": 0.10,
+           "valor_hora": 0.20, "prioridade": 0.10}
+FULL_MARKS_DISCOUNT = 0.50          # 50% under the typical price = full marks
+PRICE_PER_HOUR_GOOD = 5.0           # R$ per hour of play: full marks at or below
+PRICE_PER_HOUR_POOR = 20.0          # and none at or above
+PRIORITY_VALUE = {0: 0.0, 1: 0.6, 2: 1.0}
+POP_CEILING_LOG = 4.0               # same scale as ratings.relevancia
+
+
+@dataclass
+class Oportunidade:
+    product_id: str
+    score: float | None
+    preco_cents: int | None
+    componentes: dict[str, dict[str, float]]
+    cobertura: float                 # share of the weight that had data
+    referencia_preco: str
+    preco_por_hora: float | None
+    notas: list[str]
+
+    def dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _clamp01(x: float) -> float:
+    return max(0.0, min(1.0, x))
+
+
+def pontuar_oportunidade(product_id: str, now: int | None = None) -> Oportunidade:
+    """0 to 100. Missing inputs are left out and the remaining weights are
+    renormalized, and `cobertura` says how much of the score is backed by data.
+    The discount is measured against the TYPICAL price the buyer actually saw
+    (median of the daily minimum over a year), not the list price a store prints,
+    which can be inflated."""
+    now = now or db.now()
+    p = db.get_product(product_id)
+    if p is None:
+        raise KeyError(f"unknown product {product_id!r}")
+    agg = veredito_agregado(product_id, now)
+    if agg.best is None:
+        return Oportunidade(product_id, None, None, {}, 0.0, "nenhuma", None,
+                            [agg.label])
+
+    price = agg.best.price_cents
+    notes: list[str] = []
+    comps: dict[str, float] = {}
+
+    typical, days = _typical_price(product_id, now)
+    if typical:
+        comps["desconto"] = _clamp01(max(0.0, 1 - price / typical) / FULL_MARKS_DISCOUNT)
+        ref = f"preço típico ({brl(typical)}, {days} dias com leitura)"
+    elif agg.best.regular_cents and agg.best.regular_cents > price:
+        comps["desconto"] = _clamp01((1 - price / agg.best.regular_cents) / FULL_MARKS_DISCOUNT)
+        ref = "preço cheio informado pela loja"
+        notes.append("histórico curto: o desconto usa o preço cheio da loja, que pode estar inflado")
+    else:
+        ref = "sem referência de preço"
+        notes.append("sem histórico nem preço cheio para medir o desconto")
+
+    if p["metacritic"] is not None:
+        comps["nota"] = _clamp01(p["metacritic"] / 100)
+    elif p["user_rating"]:
+        comps["nota"] = _clamp01(p["user_rating"] / 5)
+    else:
+        notes.append("sem nota da crítica")
+    if p["popularity"]:
+        comps["popularidade"] = _clamp01(math.log10(1 + p["popularity"]) / POP_CEILING_LOG)
+
+    per_hour = None
+    if p["playtime_hours"]:
+        per_hour = round(price / 100 / p["playtime_hours"], 2)
+        comps["valor_hora"] = _clamp01((PRICE_PER_HOUR_POOR - per_hour)
+                                       / (PRICE_PER_HOUR_POOR - PRICE_PER_HOUR_GOOD))
+    else:
+        notes.append("sem horas de jogo: valor por hora não avaliado")
+    comps["prioridade"] = PRIORITY_VALUE[p["priority"] or 0]
+
+    used = {k: WEIGHTS[k] for k in comps}
+    total_w = sum(used.values())
+    score = round(100 * sum(WEIGHTS[k] * v for k, v in comps.items()) / total_w, 1)
+    coverage = round(total_w / sum(WEIGHTS.values()), 2)
+    if coverage < 0.5:
+        notes.append(f"pouca base: só {int(coverage * 100)}% do peso tem dados")
+    detail = {k: {"valor": round(v, 3), "peso": WEIGHTS[k],
+                  "contribuicao": round(100 * WEIGHTS[k] * v / total_w, 1)}
+              for k, v in comps.items()}
+    return Oportunidade(product_id, score, price, detail, coverage, ref, per_hour, notes)
+
+
+# ------------------------------------------------------ budget planner
+
+def to_cents(valor: Any) -> int:
+    """BRL amount to integer cents without going through binary floating point.
+
+    `Decimal(str(x))` reads 300.1 as exactly 300.10, where 300.1 * 100 is
+    30009.999999999996 and would silently lose a cent (or overshoot one)."""
+    try:
+        d = Decimal(str(valor).replace(",", "."))
+    except InvalidOperation as e:
+        raise ValueError(f"not a money amount: {valor!r}") from e
+    if not d.is_finite() or d < 0:
+        raise ValueError(f"budget must be a finite, non-negative amount: {valor!r}")
+    return int((d * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+
+
+@dataclass
+class ItemPlano:
+    product_id: str
+    titulo: str
+    preco_cents: int
+    score: float
+    loja: str
+    decisao: str
+
+    def dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        d["preco"] = brl(self.preco_cents)
+        return d
+
+
+@dataclass
+class Plano:
+    limite_cents: int
+    gasto_cents: int
+    itens: list[ItemPlano]
+    adiados: list[dict[str, Any]]
+    sem_preco: list[str]
+    nao_cabem: list[dict[str, Any]]
+    score_total: float
+    guloso: dict[str, Any]
+    metodo: str = "exato (programação dinâmica sobre centavos)"
+
+    @property
+    def sobra_cents(self) -> int:
+        return self.limite_cents - self.gasto_cents
+
+    def dict(self) -> dict[str, Any]:
+        return {"limite": brl(self.limite_cents), "limite_cents": self.limite_cents,
+                "gasto": brl(self.gasto_cents), "gasto_cents": self.gasto_cents,
+                "sobra": brl(self.sobra_cents), "sobra_cents": self.sobra_cents,
+                "itens": [i.dict() for i in self.itens], "adiados": self.adiados,
+                "sem_preco": self.sem_preco, "nao_cabem": self.nao_cabem,
+                "score_total": self.score_total, "guloso": self.guloso,
+                "metodo": self.metodo}
+
+
+def melhor_combinacao(items: list[tuple[int, int]], budget: int) -> list[int]:
+    """Exact 0/1 knapsack over integer cents: indices of the subset with the
+    highest total value whose total price fits `budget`.
+
+    `items` is [(price_cents, value_milli)], both integers, so nothing depends on
+    floating point. The state set keeps only Pareto-optimal (cost, value) pairs,
+    which stays small for a wishlist. Ties on value go to the cheaper subset, so
+    a plan never spends money it does not have to."""
+    states: list[tuple[int, int, tuple[int, ...]]] = [(0, 0, ())]   # cost, value, picks
+    for idx, (price, value) in enumerate(items):
+        if price > budget or value <= 0:
+            continue
+        grown = [(c + price, v + value, pk + (idx,)) for c, v, pk in states
+                 if c + price <= budget]
+        merged = sorted(states + grown, key=lambda s: (s[0], -s[1]))
+        pruned: list[tuple[int, int, tuple[int, ...]]] = []
+        best_value = -1
+        for c, v, pk in merged:
+            if v > best_value:               # dearer states must be worth more
+                pruned.append((c, v, pk))
+                best_value = v
+        states = pruned
+    return list(max(states, key=lambda s: (s[1], -s[0]))[2])
+
+
+def _greedy(items: list[tuple[int, int]], budget: int) -> list[int]:
+    order = sorted(range(len(items)), key=lambda i: (-items[i][1] / max(1, items[i][0]), i))
+    spent, picks = 0, []
+    for i in order:
+        if items[i][1] > 0 and spent + items[i][0] <= budget:
+            spent += items[i][0]
+            picks.append(i)
+    return picks
+
+
+def planejar_orcamento(limite_reais: Any, itens_desejados: list[str] | None = None, *,
+                       respeitar_espere: bool = True, score_minimo: float = 0.0,
+                       now: int | None = None, today: dt.date | None = None) -> Plano:
+    """Pick what to buy with a monthly budget.
+
+    Maximizes the summed opportunity score, exactly, with integer cents. By
+    default a game whose recommendation is "espere" is held back and listed with
+    the reason, since spending the budget on something a sale is about to
+    cheapen is a worse plan. Items with no current price are listed apart."""
+    now = now or db.now()
+    today = today or dt.date.fromtimestamp(now)
+    budget = to_cents(limite_reais)
+    ids = itens_desejados if itens_desejados is not None else \
+        sorted({w["product_id"] for w in db.active_watches()})
+
+    candidates: list[tuple[str, str, int, float, str, str]] = []
+    adiados: list[dict[str, Any]] = []
+    sem_preco: list[str] = []
+    nao_cabem: list[dict[str, Any]] = []
+    for pid in ids:
+        p = db.get_product(pid)
+        if p is None:
+            continue
+        op = pontuar_oportunidade(pid, now)
+        if op.score is None or op.preco_cents is None:
+            sem_preco.append(pid)
+            continue
+        rec = recomendar_compra(pid, today, now)
+        if respeitar_espere and rec.decisao == ESPERE:
+            adiados.append({"product_id": pid, "titulo": p["title"],
+                            "motivo": rec.justificativa[0] if rec.justificativa else ""})
+            continue
+        if op.score < score_minimo:
+            continue
+        if op.preco_cents > budget:
+            nao_cabem.append({"product_id": pid, "titulo": p["title"],
+                              "preco": brl(op.preco_cents)})
+            continue
+        agg = veredito_agregado(pid, now)
+        candidates.append((pid, p["title"], op.preco_cents, op.score,
+                           agg.best.store if agg.best else "", rec.decisao))
+
+    candidates.sort(key=lambda c: c[0])                    # deterministic ties
+    vals = [(c[2], int(round(c[3] * 1000))) for c in candidates]
+    picks = melhor_combinacao(vals, budget)
+    chosen = [candidates[i] for i in sorted(picks, key=lambda i: -vals[i][1])]
+    spent = sum(c[2] for c in chosen)
+    assert spent <= budget, "plan exceeds the budget"     # integer arithmetic: cannot happen
+
+    greedy = _greedy(vals, budget)
+    g_spent = sum(vals[i][0] for i in greedy)
+    assert g_spent <= budget
+    total = round(sum(vals[i][1] for i in picks) / 1000, 1)
+    return Plano(
+        budget, spent,
+        [ItemPlano(c[0], c[1], c[2], c[3], c[4], c[5]) for c in chosen],
+        adiados, sem_preco, nao_cabem, total,
+        {"score_total": round(sum(vals[i][1] for i in greedy) / 1000, 1),
+         "gasto_cents": g_spent,
+         "itens": [candidates[i][0] for i in greedy]})
+
+
+# ------------------------------------------- 4. editions and media comparison
+
+EDITION_ORDER = ("standard", "deluxe", "ultimate", "special")
+SMALL_MARKUP_PCT = 15
+EDITION_NOTICE = ("O conteúdo bônus não é avaliado: a comparação usa só preço e "
+                  "histórico. Se o extra te interessa, isso pesa mais que a conta.")
+
+
+def edition_of(product_id: str) -> str:
+    """standard | deluxe | ultimate | special. A `#edition` on a store alias is
+    exact (see the PlayStation provider); otherwise the title decides, and a game
+    with no edition marker is the standard one."""
+    for a in db.aliases_for(product_id):
+        if "#" in a["source_id"]:
+            tier = a["source_id"].split("#", 1)[1].lower()
+            if tier in EDITION_ORDER:
+                return tier
+    p = db.get_product(product_id)
+    t = normalize(p["title"]) if p else ""
+    if "ultimate" in t:
+        return "ultimate"
+    if "deluxe" in t:
+        return "deluxe"
+    if any(w in t.split() for w in ("collector", "colecionador", "especial", "special")):
+        return "special"
+    return "standard"
+
+
+def _min_and_depth(product_id: str) -> tuple[int | None, int | None]:
+    r = db.conn().execute(
+        "SELECT MIN(price_cents) m, MAX(CASE WHEN regular_cents > price_cents "
+        "THEN 1.0 - price_cents * 1.0 / regular_cents END) d "
+        "FROM price_points WHERE product_id=?", (product_id,)).fetchone()
+    return r["m"], (round(100 * r["d"]) if r["d"] is not None else None)
+
+
+def comprar_edicoes(produtos_id: list[str], now: int | None = None) -> dict[str, Any]:
+    """Standard vs Deluxe vs Ultimate of the same game, priced and compared with
+    each edition's own history."""
+    now = now or db.now()
+    rows: list[dict[str, Any]] = []
+    avisos = [EDITION_NOTICE]
+    for pid in produtos_id:
+        p = db.get_product(pid)
+        if p is None:
+            avisos.append(f"produto desconhecido: {pid}")
+            continue
+        agg = veredito_agregado(pid, now)
+        lo, depth = _min_and_depth(pid)
+        rows.append({"product_id": pid, "titulo": p["title"], "edicao": edition_of(pid),
+                     "preco_cents": agg.best.price_cents if agg.best else None,
+                     "loja": agg.best.store if agg.best else None,
+                     "minimo_historico_cents": lo, "maior_desconto_pct": depth,
+                     "veredito": agg.label})
+    rows.sort(key=lambda r: (EDITION_ORDER.index(r["edicao"]), r["preco_cents"] or 10**12))
+    priced = [r for r in rows if r["preco_cents"] is not None]
+    for r in rows:
+        r["preco"] = brl(r["preco_cents"]) if r["preco_cents"] is not None else None
+        r["minimo_historico"] = brl(r["minimo_historico_cents"])
+    comparacoes: list[dict[str, Any]] = []
+    if len(priced) < 2:
+        avisos.append("preciso de preço atual de pelo menos duas edições para comparar")
+        return {"edicoes": rows, "comparacoes": comparacoes, "avisos": avisos}
+
+    base = priced[0]
+    base_p = db.get_product(base["product_id"])
+    base_anchor = anchors(base_p["title"])
+    for r in priced[1:]:
+        title = db.get_product(r["product_id"])["title"]
+        if not has_anchors(title, base_anchor):
+            avisos.append(f"{title!r} não parece ser do mesmo jogo que {base_p['title']!r}")
+        diff = r["preco_cents"] - base["preco_cents"]
+        pct = round(100 * diff / base["preco_cents"])
+        if diff < 0:
+            veredito = (f"anomalia: a edição {r['edicao']} está mais barata que a "
+                        f"{base['edicao']}; confira se são a mesma loja e o mesmo produto")
+        elif r["minimo_historico_cents"] is not None and \
+                r["minimo_historico_cents"] <= base["preco_cents"]:
+            veredito = (f"a {r['edicao']} já custou {brl(r['minimo_historico_cents'])}, no nível "
+                        f"da {base['edicao']} hoje ({base['preco']}): vale esperar essa queda")
+        elif pct <= SMALL_MARKUP_PCT:
+            veredito = (f"diferença pequena (+{pct}%): se o extra te interessa, "
+                        "tende a valer levar a edição maior")
+        else:
+            extra = (f"; a {r['edicao']} já chegou a {r['maior_desconto_pct']}% de desconto"
+                     if r["maior_desconto_pct"] else "")
+            veredito = f"acréscimo de {pct}% ({brl(diff)}){extra}"
+        comparacoes.append({"de": base["edicao"], "para": r["edicao"],
+                            "diferenca_cents": diff, "diferenca": brl(diff),
+                            "diferenca_pct": pct, "veredito": veredito})
+    return {"edicoes": rows, "comparacoes": comparacoes, "avisos": avisos}
+
+
+def comparar_upgrade_switch2(base_switch1_id: str, upgrade_pack_id: str,
+                             switch2_full_id: str, possui_base: bool = False,
+                             now: int | None = None) -> dict[str, Any]:
+    """Is the Switch 1 game plus the paid Switch 2 upgrade pack cheaper than the
+    full Switch 2 Edition? If you already own the base game, only the pack counts."""
+    from .providers import nintendo
+    now = now or db.now()
+    avisos: list[str] = []
+
+    def cur(pid: str) -> tuple[int | None, str]:
+        p = db.get_product(pid)
+        title = p["title"] if p else pid
+        agg = veredito_agregado(pid, now) if p else None
+        return (agg.best.price_cents if agg and agg.best else None), title
+
+    base_c, base_t = cur(base_switch1_id)
+    up_c, up_t = cur(upgrade_pack_id)
+    full_c, full_t = cur(switch2_full_id)
+    if not nintendo.classify(up_t).upgrade_pack:
+        avisos.append(f"{up_t!r} não parece ser um Upgrade Pack (o título não diz isso)")
+    if nintendo.classify(full_t).tier not in (nintendo.EDICAO, nintendo.NATIVO):
+        avisos.append(f"{full_t!r} não parece ser uma edição de Switch 2")
+
+    def lo(pid: str) -> int | None:
+        return _min_and_depth(pid)[0]
+
+    path_a_parts = [("Upgrade Pack", up_c)] if possui_base else \
+        [("jogo de Switch 1", base_c), ("Upgrade Pack", up_c)]
+    a_cost = None if any(c is None for _, c in path_a_parts) else sum(c for _, c in path_a_parts)
+    caminhos = [
+        {"nome": "só o Upgrade Pack (você já tem o jogo)" if possui_base
+         else "jogo de Switch 1 + Upgrade Pack", "custo_cents": a_cost,
+         "custo": brl(a_cost) if a_cost is not None else None,
+         "itens": [{"item": n, "preco": brl(c) if c is not None else None}
+                   for n, c in path_a_parts]},
+        {"nome": "edição de Switch 2 completa", "custo_cents": full_c,
+         "custo": brl(full_c) if full_c is not None else None,
+         "itens": [{"item": "edição completa", "preco": brl(full_c) if full_c is not None else None}]}]
+    if a_cost is None or full_c is None:
+        avisos.append("falta preço atual de algum item: não dá para dizer qual caminho é mais barato")
+        return {"caminhos": caminhos, "mais_barato": None, "economia_cents": None,
+                "avisos": avisos}
+
+    cheaper = caminhos[0] if a_cost <= full_c else caminhos[1]
+    saving = abs(a_cost - full_c)
+    hist_parts = [lo(upgrade_pack_id)] + ([] if possui_base else [lo(base_switch1_id)])
+    hist_a = None if any(h is None for h in hist_parts) else sum(hist_parts)
+    hist_b = lo(switch2_full_id)
+    extra: dict[str, Any] = {}
+    if hist_a is not None and hist_b is not None:
+        extra["minimos_historicos"] = {
+            "caminho_a": brl(hist_a), "caminho_b": brl(hist_b),
+            "nota": "soma dos menores preços de cada peça, sem garantir que caiam juntas"}
+    return {"caminhos": caminhos, "mais_barato": cheaper["nome"], "economia_cents": saving,
+            "economia": brl(saving), "avisos": avisos, **extra}
+
+
+PHYSICAL = ("midia fisica", "fisica", "disco", "cartucho", "blu ray")
+DIGITAL_MARK = ("digital", "codigo", "code in box", "key", "download")
+SIGNAL_FRESH_S = 7 * DAY
+
+
+def comparar_midia(product_id: str, now: int | None = None) -> dict[str, Any]:
+    """Physical retail against the digital store. Physical prices come from
+    community offers, which are posts by users: they are marked as such, must be
+    recent, and do not include shipping."""
+    now = now or db.now()
+    agg = veredito_agregado(product_id, now)
+    digital = None
+    if agg.best:
+        digital = {"preco_cents": agg.best.price_cents, "preco": brl(agg.best.price_cents),
+                   "loja": agg.best.store, "url": agg.best.url}
+
+    fisica = None
+    for r in db.signals_for(product_id, 50):
+        t = normalize(r["title"])
+        if not any(p in t for p in PHYSICAL) or any(d in t for d in DIGITAL_MARK):
+            continue
+        if now - r["seen_ts"] > SIGNAL_FRESH_S:
+            continue
+        if fisica is None or r["price_cents"] < fisica["preco_cents"]:
+            fisica = {"preco_cents": r["price_cents"], "preco": brl(r["price_cents"]),
+                      "loja": r["store"], "url": r["url"], "titulo": r["title"]}
+
+    avisos = ["preço de mídia física é oferta postada por usuário: confira antes de comprar",
+              "o frete não está incluído"]
+    if digital is None or fisica is None:
+        falta = "digital" if digital is None else "física"
+        return {"digital": digital, "fisica": fisica, "mais_barata": None,
+                "diferenca_cents": None,
+                "avisos": avisos + [f"sem preço recente de mídia {falta}: não dá para comparar"]}
+    diff = digital["preco_cents"] - fisica["preco_cents"]
+    winner = "fisica" if diff > 0 else "digital" if diff < 0 else "empate"
+    return {"digital": digital, "fisica": fisica, "mais_barata": winner,
+            "diferenca_cents": abs(diff), "diferenca": brl(abs(diff)), "avisos": avisos}

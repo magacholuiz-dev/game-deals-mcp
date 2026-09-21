@@ -335,6 +335,65 @@ premiado nem punido. O veredito devolve o motivo: `confianca_motivos`,
 Você é avisado uma vez quando uma fonte quebra e uma vez quando ela sai de
 "quebrada".
 
+## Inteligência de preço
+
+Tudo em `intel.py`, tudo regra que dá para ler e testar, sem modelo opaco. Cada
+decisão vem com o motivo e com uma **incerteza**, e quando os dados não sustentam
+uma afirmação a resposta é "neutro", nunca um palpite confiante. Dinheiro é sempre
+centavo inteiro.
+
+**Veredito agregado** (`veredito_agregado`): o menor preço **atual** entre as lojas
+oficiais, comparado com todo o histórico de todas as lojas ("menor preço registrado
+em todas as lojas em 7 meses"). Duas perguntas separadas de propósito: o que conta
+como *disponível agora* passa pelo filtro de frescor (mais velho que 3 ciclos da
+própria fonte, mínimo 3 dias, não é oferta ativa: um anúncio de 6 meses de uma loja
+abandonada não pode aparecer como promoção), mas o que conta como *histórico* não
+passa: um preço real de um ano atrás continua sendo real.
+
+**Comprar ou esperar** (`recomendar_compra`), na ordem:
+
+1. jogo **não lançado**: neutro (pré-venda não entra em promoção);
+2. sem preço recente: neutro, incerteza máxima;
+3. **promoção grande a até 30 dias** (Black Friday, Steam Winter…) e desconto
+   **raso**: espere. Raso é menos da metade do desconto típico, ou menos de 15%
+   quando não há base típica;
+4. **menor preço** já registrado, com histórico: compre;
+5. desconto **igual ou acima do típico** do publisher (ou da plataforma): compre;
+6. o preço **já esteve menor** há pouco: espere;
+7. senão, neutro.
+
+A regra 3 vem antes da 4 de propósito: um mínimo alcançado com desconto raso, dias
+antes de uma promoção grande, é um mínimo fraco. Eventos com data só *estimada*
+aumentam a incerteza; a Steam Autumn (pequena) e promoções de outra plataforma não
+disparam "espere". O desconto típico usa a **maior queda de cada produto** (uma
+promoção longa conta uma vez, não uma por leitura) e **exclui o próprio produto**
+da referência, que senão seria circular.
+
+**Nota de oportunidade** (`pontuar_oportunidade`, 0 a 100): desconto real (peso
+0,35), nota da crítica (0,25), valor por hora de jogo (0,20), popularidade em escala
+log (0,10) e prioridade na wishlist (0,10). O desconto é medido contra o **preço
+típico** que o comprador realmente viu (mediana do menor preço diário em um ano),
+não contra o preço de tabela, que a loja pode inflar. R$ 5/h ou menos é nota máxima,
+R$ 20/h ou mais, zero. Entrada ausente sai da conta e `cobertura` diz quanto do peso
+tem dados.
+
+**Orçamento** (`planejar_orcamento`): mochila 0/1 **exata** sobre centavos inteiros,
+por programação dinâmica com poda de Pareto. Não é o guloso, que erra: o teste tem um
+caso em que o melhor por real bloqueia dois itens que juntos valem mais. Verificado
+contra força bruta em 300 instâncias aleatórias. A conversão do valor usa `Decimal`:
+`int(4.35 * 100)` dá 434, e 137 dos primeiros 1.999 valores em centavos perdem um
+centavo desse jeito. Por padrão segura o que a recomendação manda esperar e lista o
+motivo.
+
+**Comparações**: `comprar_edicoes` (Standard x Deluxe x Ultimate; o conteúdo bônus
+**não** é avaliado, só preço e histórico), `comparar_upgrade_switch2` (jogo de
+Switch 1 + Upgrade Pack contra a edição completa) e `comparar_midia` (física, que
+vem de ofertas de usuários, recentes e sem frete, contra digital).
+
+Um defeito que isso revelou e que já existia: um jogo cujo preço **nunca mudou**
+era chamado de "menor preço já registrado", com selo dourado e alerta, porque
+ninguém jamais foi mais barato. Preço estável não é oferta.
+
 ## Banco: backup, exportação e Docker
 
 O histórico acumulado é o ativo mais valioso do projeto e não dá para recuperá-lo

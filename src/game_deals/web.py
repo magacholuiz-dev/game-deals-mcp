@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 
-from . import collector, db
+from . import collector, db, health
 from .models import brl
 from .providers.nintendo import ROTULO as ROTULO_COMPAT
 from .verdict import evaluate as verdict_for, highlight
@@ -133,6 +133,11 @@ def refresh_all() -> JSONResponse:
     return JSONResponse({"ok": True, "ofertas": n})
 
 
+@app.get("/api/health")
+def source_health() -> JSONResponse:
+    return JSONResponse(health.summarize(health.check_source_health()))
+
+
 @app.get("/api/alerts")
 def alerts() -> JSONResponse:
     return JSONResponse({"alertas": [
@@ -148,8 +153,14 @@ def index() -> FileResponse:
 
 
 def main() -> None:
+    import os
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8787, log_level="warning")
+    # Loopback by default: the dashboard has no login. A container has to bind
+    # 0.0.0.0 to be reachable, and docker-compose.yml publishes that port to the
+    # host's 127.0.0.1 only.
+    host = os.environ.get("GAMEDEALS_WEB_HOST", "127.0.0.1")
+    port = int(os.environ.get("GAMEDEALS_WEB_PORT", "8787"))
+    uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
 if __name__ == "__main__":

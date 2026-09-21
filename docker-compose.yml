@@ -1,0 +1,28 @@
+# Always-on deployment: scheduler + dashboard in one container, one data volume.
+#
+#   docker compose up -d --build
+#   docker compose exec gamedeals game-deals-scheduler --status
+#   docker compose exec gamedeals game-deals-backup backup
+#
+# The dashboard has no login, so the port is published to the host's loopback
+# only. To reach it from another machine put it behind something that
+# authenticates (an SSH tunnel is enough); do not change 127.0.0.1 to 0.0.0.0.
+services:
+  gamedeals:
+    build: .
+    image: game-deals-mcp:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - gamedeals-data:/data
+    # Optional keys (RAWG, ITAD, ...): copy .env.example to .env. Never baked
+    # into the image.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      GAMEDEALS_DB: /data/deals.db
+
+volumes:
+  gamedeals-data:

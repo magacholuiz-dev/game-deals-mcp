@@ -12,7 +12,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from . import alerts as alerts_mod
-from . import collector, db, providers, ratings
+from . import collector, db, health, providers, ratings
 from .models import brl
 from .verdict import evaluate as verdict_for
 
@@ -138,6 +138,9 @@ def get_price(product: str) -> dict:
             "em_estoque": o.in_stock,
             "veredito": v.label,
             "confianca": v.confidence,
+            "confianca_antes_das_lacunas": v.confidence_before_gaps,
+            "confianca_motivos": v.confidence_reasons,
+            "lacunas_de_coleta": v.gap,
             "minimo_90d": brl(v.min_90d_cents),
             "minimo_historico": brl(v.min_all_cents),
             "url": o.url,
@@ -390,6 +393,15 @@ def pending_alerts(acknowledge: bool = False) -> dict:
         db.ack_alerts([r["id"] for r in rows])
     return {"total": len(out), "alertas": out,
             "marcados_como_lidos": bool(acknowledge and out)}
+
+
+@mcp.tool()
+def source_health() -> dict:
+    """Saúde de cada fonte de preço, calculada só a partir das execuções
+    registradas: saudável, degradada, quebrada, sem dados ou inativa, cada uma
+    com os motivos. Use antes de confiar num preço: uma fonte quebrada deixa
+    o painel mostrando preço velho como se fosse novo."""
+    return health.summarize(health.check_source_health())
 
 
 @mcp.tool()

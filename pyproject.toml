@@ -15,6 +15,8 @@ dependencies = [
 game-deals-mcp = "game_deals.server:main"
 game-deals-collect = "game_deals.collector:main"
 game-deals-web = "game_deals.web:main"
+game-deals-scheduler = "game_deals.scheduler:main"
+game-deals-backup = "game_deals.backup:main"
 
 [dependency-groups]
 dev = ["pytest>=8.0"]

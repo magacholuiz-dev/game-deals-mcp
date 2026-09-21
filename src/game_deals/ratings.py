@@ -113,6 +113,14 @@ def _get(path: str, **params) -> dict:
         return r.json() or {}
 
 
+def refresh(rawg_id: int) -> Ficha | None:
+    """Current numbers for a game we already know by its RAWG id."""
+    d = _get(f"games/{int(rawg_id)}")
+    if not d or d.get("_error") or not d.get("id"):
+        return None
+    return _ficha(d)
+
+
 def buscar(titulo: str, limite: int = 5, plataforma: str = "",
            preciso: bool = True) -> list[Ficha]:
     """Busca por título. `preciso=True` casa o nome exato — bom para "Ghost of

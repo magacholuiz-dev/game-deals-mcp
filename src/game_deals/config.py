@@ -15,6 +15,8 @@ def _s(key: str, default: str = "") -> str:
 
 
 DB_PATH = _s("GAMEDEALS_DB", "./deals.db")
+BACKUP_DIR = _s("GAMEDEALS_BACKUP_DIR", "./backups")
+BACKUP_KEEP = int(_s("GAMEDEALS_BACKUP_KEEP", "14"))
 COUNTRY = _s("COUNTRY", "BR")
 CURRENCY = _s("CURRENCY", "BRL")
 

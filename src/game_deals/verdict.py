@@ -6,10 +6,10 @@ Uma consulta so, e a resposta ja sai na linguagem que voce queria.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Any
 
-from . import db
+from . import db, rhythm
 from .models import brl
 
 DAY = 86400
@@ -29,6 +29,11 @@ class Verdict:
     above_recent_min: bool = False    # preco atual acima do minimo de 90d
     enough_history: bool = False      # historico suficiente para alegar minimo
     caveat: str = ""
+    # Why the confidence is what it is, and what it was before collection gaps
+    # were taken into account. `gap` is None when there was nothing to judge.
+    confidence_before_gaps: str = ""
+    confidence_reasons: list[str] = field(default_factory=list)
+    gap: dict[str, Any] | None = None
 
     def dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -52,10 +57,37 @@ def _humanize(days: int) -> str:
     return f"{base} e {meses} " + ("mês" if meses == 1 else "meses")
 
 
+LEVELS = ("baixa", "media", "alta")
+_DROP = {"none": 0, "minor": 1, "major": 2}
+
+
+def _source_of(c, product_id: str, store: str, scope_store: bool) -> str:
+    if scope_store:
+        r = c.execute("SELECT source FROM price_points WHERE product_id=? AND store=? "
+                      "ORDER BY ts DESC LIMIT 1", (product_id, store)).fetchone()
+    else:
+        r = c.execute("SELECT source FROM price_points WHERE product_id=? "
+                      "ORDER BY ts DESC LIMIT 1", (product_id,)).fetchone()
+    return r["source"] if r else ""
+
+
+def apply_gaps(confidence: str, report: "rhythm.GapReport | None") -> tuple[str, str]:
+    """(new confidence, reason or ''). A minor gap costs one level, a major gap
+    two, never below "baixa". Nothing changes when there is nothing to judge."""
+    if report is None or report.severity == "none" or confidence == "baixa":
+        return confidence, ""
+    idx = max(0, LEVELS.index(confidence) - _DROP[report.severity])
+    return LEVELS[idx], report.text()
+
+
 def evaluate(product_id: str, store: str, price_cents: int,
-             scope_store: bool = True) -> Verdict:
+             scope_store: bool = True, now: int | None = None) -> Verdict:
     """scope_store=True compara so contra a mesma loja (mais honesto);
-    False compara contra o melhor preco visto em qualquer loja."""
+    False compara contra o melhor preco visto em qualquer loja.
+
+    `now` exists so tests can pin the clock. The confidence also looks at the
+    collection rhythm recorded in job_runs (see rhythm.py)."""
+    now = now or db.now()
     c = db.conn()
     where = "product_id=?" + (" AND store=?" if scope_store else "")
     args_base: list[Any] = [product_id] + ([store] if scope_store else [])
@@ -75,15 +107,15 @@ def evaluate(product_id: str, store: str, price_cents: int,
     def _min_since(days: int) -> int | None:
         r = c.execute(
             f"SELECT MIN(price_cents) AS m FROM price_points WHERE {where} AND ts>=?",
-            (*args_base, db.now() - days * DAY)).fetchone()
+            (*args_base, now - days * DAY)).fetchone()
         return r["m"] if r else None
 
     min_90 = _min_since(90)
     min_365 = _min_since(365)
 
-    history_days = int((db.now() - first_ts) / DAY) if first_ts else 0
+    history_days = int((now - first_ts) / DAY) if first_ts else 0
     days_since_lower = (
-        None if last_lower_ts is None else max(0, int((db.now() - last_lower_ts) / DAY))
+        None if last_lower_ts is None else max(0, int((now - last_lower_ts) / DAY))
     )
 
     # "Menor preco ja registrado" com 2 leituras de ontem e tecnicamente verdade
@@ -98,6 +130,21 @@ def evaluate(product_id: str, store: str, price_cents: int,
         confidence = "media"
     else:
         confidence = "alta"
+
+    confidence_before = confidence
+    reasons: list[str] = []
+    if confidence != "alta" and samples > 1:
+        reasons.append(f"histórico curto: {samples} leituras em {history_days} dias")
+
+    # Collection rhythm over the period the claim covers. "Lowest in 7 months" is
+    # judged over 7 months of runs, not over the last week.
+    claim_days = days_since_lower if days_since_lower is not None else history_days
+    gap_report = rhythm.assess_rhythm(
+        _source_of(c, product_id, store, scope_store),
+        window_days=min(365, max(14, claim_days)), now=now)
+    confidence, gap_reason = apply_gaps(confidence, gap_report)
+    if gap_reason:
+        reasons.append(gap_reason)
 
     is_atl = days_since_lower is None and samples > 1
 
@@ -120,9 +167,9 @@ def evaluate(product_id: str, store: str, price_cents: int,
         quando = ""
         r = c.execute(
             f"SELECT MAX(ts) AS t FROM price_points WHERE {where} AND price_cents<=?"
-            " AND ts>=?", (*args_base, min_90, db.now() - 90 * DAY)).fetchone()
+            " AND ts>=?", (*args_base, min_90, now - 90 * DAY)).fetchone()
         if r and r["t"]:
-            quando = f" há {_humanize(max(1, int((db.now() - r['t']) / DAY)))}"
+            quando = f" há {_humanize(max(1, int((now - r['t']) / DAY)))}"
         label = f"não é promoção — esteve a {brl(min_90)}{quando}"
     elif days_since_lower == 0:
         label = "já esteve mais barato hoje"
@@ -130,9 +177,11 @@ def evaluate(product_id: str, store: str, price_cents: int,
         label = f"menor preço dos últimos {_humanize(days_since_lower)}"
 
     caveat = ""
-    if confidence != "alta" and samples > 1:
+    if confidence_before != "alta" and samples > 1:
         caveat = (f"apenas {samples} leituras em {history_days} dias — "
                   f"o veredito fica confiável depois de ~2 meses coletando")
+    if gap_reason:
+        caveat = (caveat + "; " if caveat else "") + gap_reason
 
     return Verdict(
         label=label,
@@ -147,6 +196,9 @@ def evaluate(product_id: str, store: str, price_cents: int,
         above_recent_min=bool(acima_do_minimo_recente),
         enough_history=historico_ok,
         caveat=caveat,
+        confidence_before_gaps=confidence_before,
+        confidence_reasons=reasons,
+        gap=gap_report.dict() if gap_report else None,
     )
 
 

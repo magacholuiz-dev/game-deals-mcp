@@ -12,3 +12,5 @@ __pycache__/
 .DS_Store
 .env.tmp
 .http_cache.db*
+backups/
+exports/

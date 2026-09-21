@@ -260,14 +260,115 @@ claude mcp add game-deals -- uv --directory /Users/luizfernandomagacho/dev/game-
 
 ### Agendar a coleta
 
+O agendador é um serviço com estado no próprio banco (`job_runs`, `job_state`),
+não um horário fixo do `launchd`. O `launchd` só o mantém vivo.
+
 ```bash
-cp scripts/com.luiz.gamedeals.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.luiz.gamedeals.plist
+scripts/install.sh --print     # mostra o plist gerado para ESTE checkout, sem instalar
+scripts/install.sh             # instala e carrega
+uv run game-deals-scheduler --status
 ```
 
-Roda 9h30 e 21h30, grava em `collector.log`. Alertas saem por
-[ntfy.sh](https://ntfy.sh) (push no celular, sem cadastro — escolha um tópico
-difícil de adivinhar) e/ou notificação nativa do macOS.
+O plist antigo tinha o caminho da casa do autor escrito dentro. Este é gerado a
+partir do caminho do repositório e do usuário atual.
+
+## Agendamento, lacunas e saúde das fontes
+
+**Ciclos (ticks).** Cada trabalho tem uma cadência e o tempo é cortado em ciclos
+dessa duração, deslocados por um jitter fixo por trabalho. Um trabalho está
+devido quando não existe execução para o ciclo atual. Depois que o Mac dorme, os
+ciclos perdidos **não são reexecutados**: uma execução de recuperação responde ao
+último ciclo, e os perdidos ficam registrados como a diferença entre execuções
+esperadas e feitas. É essa diferença que rebaixa a confiança do veredito.
+
+| trabalho | cadência |
+|---|---|
+| eShop, PS Store | 12 h |
+| Steam | 6 h |
+| feed da comunidade | 1 h |
+| ITAD | 1 dia |
+| notas (RAWG) | 7 dias |
+| backup | 1 dia |
+
+Metade da cadência de 3 dias antes de uma promoção grande até ela acabar. Eventos
+só *estimados* (Semana do Consumidor 2027) nunca aceleram a coleta.
+
+**Falhas.** Uma execução que falha é repetida com recuo exponencial. Três falhas
+seguidas abrem um **disjuntor** que pula o trabalho por um tempo crescente (até
+6 h), para não martelar um site quebrado. Uma execução boa fecha o disjuntor.
+
+**O que conta como falha da fonte.** `robots`, `timeout`, `http`, `drift` (o
+parser não leu a resposta) e `other`. Um jogo que não existe na loja, ou uma
+edição ambígua, é fato sobre o produto e **não** conta, senão uma fonte
+saudável pareceria quebrada por causa de um título não vendido no Brasil.
+
+### Confiança que enxerga lacunas
+
+Antes, a confiança do veredito dependia só de quantas leituras existiam. Agora
+ela também olha o ritmo de coleta no período que a frase alega: "menor preço em
+7 meses" é julgado sobre 7 meses de execuções, não sobre a última semana.
+
+- esperadas = tempo coberto ÷ cadência **da própria fonte**;
+- feitas = janelas de tempo distintas com uma execução boa (falha não conta,
+  parcial conta, duas execuções na mesma janela contam uma vez);
+- lacuna pequena tira um nível de confiança, lacuna grande tira dois, nunca
+  abaixo de "baixa"; sem selo e sem alerta de "menor preço" com confiança baixa.
+
+Duas regras que evitam injustiça: uma coleta **semanal** que rodou toda semana é
+perfeita, não "6 de 7 faltando"; e histórico que **antecede o agendador** ou foi
+importado de fora (backfill do ITAD) não tem execuções para comparar, então não é
+premiado nem punido. O veredito devolve o motivo: `confianca_motivos`,
+`confianca_antes_das_lacunas` e `lacunas_de_coleta`.
+
+### Saúde das fontes
+
+`health.check_source_health()`, também em `GET /api/health` e na tool
+`source_health` do MCP, classifica cada fonte só pelas execuções registradas:
+
+- **quebrada**: disjuntor aberto, 3 falhas seguidas, 2 execuções seguidas com
+  formato ilegível, `robots.txt` passou a proibir, a fonte que trazia itens não
+  traz nada há 3 execuções, ou não há coleta boa há 4 cadências;
+- **degradada**: última execução parcial, mais de 20% das recentes falharam,
+  latência mediana alta, ou coleta um pouco atrasada;
+- **saudável**, **sem dados** e **inativa** (sem credencial).
+
+Você é avisado uma vez quando uma fonte quebra e uma vez quando ela sai de
+"quebrada".
+
+## Banco: backup, exportação e Docker
+
+O histórico acumulado é o ativo mais valioso do projeto e não dá para recuperá-lo
+de nenhuma API. O trabalho `backup` (diário) usa a API de backup do SQLite, que é
+consistente mesmo com o coletor escrevendo, e **só guarda a cópia se ela passar
+`integrity_check` e tiver pelo menos as mesmas linhas da origem**. Mantém as 14
+mais novas e, se a verificação falhar, não apaga nenhuma cópia antiga.
+
+```bash
+uv run game-deals-backup                 # cópia verificada + rotação
+uv run game-deals-backup list
+uv run game-deals-backup export x.json   # portátil entre máquinas
+uv run game-deals-backup import x.json   # não duplica: linhas presentes ficam
+uv run game-deals-backup restore deals-20260921-030000.db --force
+```
+
+`restore` recusa sobrescrever sem `--force` e, mesmo com ele, guarda uma cópia de
+segurança (`.before-restore`). Backup corrompido é rejeitado antes de tocar em
+qualquer coisa.
+
+Para rodar num servidor sempre ligado:
+
+```bash
+docker compose up -d --build
+docker compose exec gamedeals game-deals-scheduler --status
+```
+
+Agendador e painel rodam **no mesmo contêiner**, com um volume de dados: o modo
+WAL do SQLite precisa de memória compartilhada, o que não é confiável entre
+contêineres num Mac. A porta é publicada só em `127.0.0.1`, porque o painel não
+tem login. A imagem roda sem privilégios de administrador e não contém `.env`
+nem testes; as chaves entram em tempo de execução. Testado de verdade: a imagem
+constrói, o contêiner fica saudável, o agendador executa sozinho, um backup
+verificado é gerado, e o histórico sobrevive a um reinício sem repetir trabalhos.
 
 ## Dashboard
 

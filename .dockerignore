@@ -1,0 +1,15 @@
+.git
+.venv
+.env
+.certs
+*.db
+*.db-wal
+*.db-shm
+.http_cache.db*
+backups
+exports
+tests
+scripts
+__pycache__
+.pytest_cache
+*.log

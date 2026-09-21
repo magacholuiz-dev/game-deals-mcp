@@ -202,6 +202,12 @@ def main() -> None:
     print("GTA VI (PS5) — pré-venda, lança 19/11/2026")
     for fonte, sid, titulo, plat, regra in FIXOS:
         entra_loja(titulo, fonte, sid, plat, "", regra)
+        # Release date announced by PlayStation. Without it the buy-or-wait engine
+        # cannot tell a pre-order (which never goes on sale) from a normal game.
+        if "Grand Theft Auto VI" in titulo:
+            db.conn().execute("UPDATE products SET released=? WHERE id=?",
+                              ("2026-11-19", slug(titulo)))
+            db.conn().commit()
 
     if ratings.configured():
         ranqueados()

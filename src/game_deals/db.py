@@ -245,6 +245,19 @@ def add_alias(product_id: str, source: str, source_id: str,
     conn().commit()
 
 
+def replace_alias(product_id: str, source: str, source_id: str,
+                  label: str = "", url: str = "") -> int:
+    """Make `source_id` the only alias of this product for `source`. Returns how
+    many stale aliases were removed. Used when an id format changes, so the old
+    one stops failing on every collection instead of piling up."""
+    cur = conn().execute(
+        "DELETE FROM aliases WHERE product_id=? AND source=? AND source_id<>?",
+        (product_id, source, source_id))
+    conn().commit()
+    add_alias(product_id, source, source_id, label, url)
+    return cur.rowcount
+
+
 def aliases_for(product_id: str) -> list[sqlite3.Row]:
     return conn().execute(
         "SELECT * FROM aliases WHERE product_id=?", (product_id,)).fetchall()

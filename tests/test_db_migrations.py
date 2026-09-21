@@ -90,3 +90,12 @@ def test_migrations_are_idempotent(fresh_db):
     versions = [r["version"] for r in
                 db.conn().execute("SELECT version FROM schema_version")]
     assert len(versions) == len(set(versions))
+
+
+def test_replace_alias_keeps_a_single_alias_per_source(fresh_db):
+    db.upsert_product("p", "P")
+    db.add_alias("p", "playstation", "10000730")
+    removed = db.replace_alias("p", "playstation", "10000730#ultimate")
+    assert removed == 1
+    ids = [a["source_id"] for a in db.aliases_for("p")]
+    assert ids == ["10000730#ultimate"]

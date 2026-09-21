@@ -25,7 +25,9 @@ from game_deals.providers.nintendo import NATIVO                 # noqa: E402
 FIXOS = [
     ("playstation", "product/EP1004-PPSA01547_00-GTAVISTANDARD001",
      "Grand Theft Auto VI", "ps5", "any_drop"),
-    ("playstation", "10000730",
+    # "#ultimate": a bare concept id is ambiguous (Standard and Ultimate share it)
+    # and the provider refuses it rather than price the wrong edition.
+    ("playstation", "10000730#ultimate",
      "Grand Theft Auto VI: Ultimate Edition", "ps5", "any_drop"),
 ]
 
@@ -131,7 +133,7 @@ def entra_loja(titulo: str, fonte: str, sid: str, plataforma: str,
                silencioso: bool = False) -> bool:
     pid = slug(titulo)
     db.upsert_product(pid, titulo, "game", plataforma, imagem, compat)
-    db.add_alias(pid, fonte, sid)
+    db.replace_alias(pid, fonte, sid)
     ofertas = refresh_product(pid, quiet=True)
     sinais = coletar_sinais(pid, titulo) if not ofertas else []
     return _finaliza(pid, titulo, regra, ofertas, sinais, silencioso)

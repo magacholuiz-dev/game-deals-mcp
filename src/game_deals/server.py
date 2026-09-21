@@ -245,9 +245,7 @@ def discover_top(platform: str = "switch", min_metacritic: int = 80,
             existente = db.resolve(f.titulo)
             pid = existente or pid
             db.upsert_product(pid, f.titulo, "game", platform, f.imagem)
-            db.set_ratings(pid, f.rawg_id, f.metacritic, f.nota_usuarios,
-                           f.avaliacoes, f.popularidade, f.relevancia,
-                           f.lancamento)
+            ratings.salvar(pid, f)
             criados.append(pid)
 
     return {"plataforma": platform, "total": len(fichas),
@@ -270,8 +268,7 @@ def enrich_ratings(product: str, titulo_busca: str = "") -> dict:
         return {"erro": "RAWG não achou nada com esse título",
                 "dica": "passe titulo_busca com o nome em inglês"}
     f = fichas[0]
-    db.set_ratings(pid, f.rawg_id, f.metacritic, f.nota_usuarios, f.avaliacoes,
-                   f.popularidade, f.relevancia, f.lancamento)
+    ratings.salvar(pid, f)
     if not p["image_url"]:
         db.set_image(pid, f.imagem)
     return {"product_id": pid, "casou_com": f.titulo, "ficha": f.dict(),

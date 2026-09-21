@@ -91,9 +91,7 @@ def adiciona(titulo_pedido: str, plataforma: str = "", regra: str = "new_low",
         RETRO if plataforma == "switch" else "")
     db.upsert_product(pid, ficha.titulo, "game", plataforma or "", ficha.imagem,
                       compat)
-    db.set_ratings(pid, ficha.rawg_id, ficha.metacritic, ficha.nota_usuarios,
-                   ficha.avaliacoes, ficha.popularidade, ficha.relevancia,
-                   ficha.lancamento)
+    ratings.salvar(pid, ficha)
 
     preco, origem, n_com = _preco(pid, ficha.titulo, plataforma)
 

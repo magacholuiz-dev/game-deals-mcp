@@ -62,10 +62,12 @@ _DROP = {"none": 0, "minor": 1, "major": 2}
 
 
 def _source_of(c, product_id: str, store: str, scope_store: bool) -> str:
-    if scope_store:
-        r = c.execute("SELECT source FROM price_points WHERE product_id=? AND store=? "
-                      "ORDER BY ts DESC LIMIT 1", (product_id, store)).fetchone()
-    else:
+    """Which source produced this store's readings. The gap analysis judges THAT
+    source's rhythm, so a cross-store verdict still asks about the store whose
+    price is being claimed, not whichever happened to report last."""
+    r = c.execute("SELECT source FROM price_points WHERE product_id=? AND store=? "
+                  "ORDER BY ts DESC LIMIT 1", (product_id, store)).fetchone()
+    if r is None and not scope_store:
         r = c.execute("SELECT source FROM price_points WHERE product_id=? "
                       "ORDER BY ts DESC LIMIT 1", (product_id,)).fetchone()
     return r["source"] if r else ""
@@ -98,11 +100,13 @@ def evaluate(product_id: str, store: str, price_cents: int,
     last_lower_ts = row["t"] if row else None
 
     stats = c.execute(
-        f"SELECT COUNT(*) AS n, MIN(ts) AS first_ts, MIN(price_cents) AS min_all "
+        f"SELECT COUNT(*) AS n, MIN(ts) AS first_ts, MIN(price_cents) AS min_all, "
+        f"MAX(price_cents) AS max_all "
         f"FROM price_points WHERE {where}", args_base).fetchone()
     samples = stats["n"] or 0
     first_ts = stats["first_ts"]
     min_all = stats["min_all"]
+    max_all = stats["max_all"]
 
     def _min_since(days: int) -> int | None:
         r = c.execute(
@@ -146,7 +150,11 @@ def evaluate(product_id: str, store: str, price_cents: int,
     if gap_reason:
         reasons.append(gap_reason)
 
-    is_atl = days_since_lower is None and samples > 1
+    # A price that never moved is not a low, it is just the price. With nothing
+    # ever cheaper AND nothing ever dearer, calling it "the lowest ever" gave a
+    # gold badge and a "new low" alert to games that never had a promotion.
+    flat = samples > 1 and min_all == max_all == price_cents
+    is_atl = days_since_lower is None and samples > 1 and not flat
 
     # Armadilha: "menor preco dos ultimos N dias" e tecnicamente verdade sempre
     # que N e a distancia ate a ultima leitura menor -- inclusive quando o preco
@@ -157,6 +165,8 @@ def evaluate(product_id: str, store: str, price_cents: int,
 
     if samples <= 1:
         label = "sem histórico ainda (primeira leitura)"
+    elif flat:
+        label = f"preço sem variação em {history_days} dias: sem promoção"
     elif is_atl and not historico_ok:
         # Mesma guarda do selo e do alerta: sem base, a frase nao pode soar como
         # conquista. "0 dias de coleta" e o oposto de uma boa noticia.

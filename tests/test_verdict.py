@@ -305,3 +305,24 @@ def test_casamento_de_titulo_rejeita_jogo_diferente():
     assert _bate("Grand Theft Auto VI", "Jogo Grand Theft Auto VI Standard")
     assert not _bate("The Legend of Zelda: Ocarina of Time",
                      "The Legend of Zelda: Breath of the Wild")
+
+
+
+def test_preco_que_nunca_mudou_nao_e_minimo_historico():
+    """Regressão: um jogo sempre a R$ 250 recebia o selo dourado e o alerta de
+    'menor preço', porque ninguém jamais foi mais barato. Preço estável não é
+    oferta."""
+    for d in range(0, 120, 4):
+        ponto(25000, d)
+    v = evaluate("p", "Loja", 25000)
+    assert not v.is_all_time_low
+    assert "sem variação" in v.label
+    assert highlight(v) is None
+    assert regra("new_low", None, _oferta(25000), v, None) is None
+
+
+def test_voltar_ao_minimo_depois_de_ter_estado_mais_caro_continua_sendo_minimo():
+    for d in range(0, 120, 4):
+        ponto(30000, d)
+    v = evaluate("p", "Loja", 25000)
+    assert v.is_all_time_low

@@ -106,7 +106,7 @@ def test_job_tables_exist_on_fresh_and_upgraded_databases(fresh_db):
     for table in ("job_runs", "job_state"):
         assert db.conn().execute(
             "SELECT 1 FROM sqlite_master WHERE name=?", (table,)).fetchone()
-    assert db.LATEST_VERSION == 3
+    assert db.LATEST_VERSION == 4
 
 
 def test_old_v2_database_gets_the_job_tables(fresh_db):
@@ -116,5 +116,25 @@ def test_old_v2_database_gets_the_job_tables(fresh_db):
     raw.close()
     db.conn()
     assert db.conn().execute(
-        "SELECT MAX(version) v FROM schema_version").fetchone()["v"] == 3
+        "SELECT MAX(version) v FROM schema_version").fetchone()["v"] == 4
     db.conn().execute("SELECT * FROM job_runs")     # does not raise
+
+
+def test_migration_4_adds_intel_columns_on_old_and_new_databases(fresh_db):
+    db.conn()
+    cols = {r["name"] for r in db.conn().execute("PRAGMA table_info(products)")}
+    assert {"playtime_hours", "publisher", "priority"} <= cols
+    assert db.LATEST_VERSION == 4
+
+
+def test_setters_and_priority_validation(fresh_db):
+    db.upsert_product("p", "P")
+    db.set_playtime("p", 42.5)
+    db.set_publisher("p", " Nintendo ")
+    db.set_priority("p", 2)
+    row = db.get_product("p")
+    assert (row["playtime_hours"], row["publisher"], row["priority"]) == (42.5, "Nintendo", 2)
+    with pytest.raises(ValueError):
+        db.set_priority("p", 5)
+    db.set_playtime("p", 0)                     # RAWG's "unknown": must not erase
+    assert db.get_product("p")["playtime_hours"] == 42.5

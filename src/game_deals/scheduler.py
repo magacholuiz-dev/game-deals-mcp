@@ -113,9 +113,7 @@ def _other_runner(name: str) -> Callable[[int], Outcome]:
             if ficha is None:
                 failed += 1
                 continue
-            db.set_ratings(r["id"], ficha.rawg_id, ficha.metacritic, ficha.nota_usuarios,
-                           ficha.avaliacoes, ficha.popularidade, ficha.relevancia,
-                           ficha.lancamento)
+            ratings.salvar(r["id"], ficha)
             items += 1
         status = jobs.OK if not failed else (jobs.FAILED if failed == len(rows) else jobs.PARTIAL)
         return Outcome(status, items, len(rows), failed,

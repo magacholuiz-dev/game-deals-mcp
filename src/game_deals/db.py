@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS products (
   relevance   REAL,
   released    TEXT NOT NULL DEFAULT '',
   compat      TEXT NOT NULL DEFAULT '',   -- como roda no Switch 2
+  playtime_hours REAL,                     -- media de horas para terminar (RAWG)
+  publisher   TEXT NOT NULL DEFAULT '',
+  priority    INTEGER NOT NULL DEFAULT 0, -- wishlist: 0 normal, 1 alta, 2 imperdivel
   created_at  INTEGER NOT NULL
 );
 
@@ -210,8 +213,19 @@ def _m3_job_tables(c: sqlite3.Connection) -> None:
     c.execute("SELECT 1 FROM job_runs LIMIT 1")
 
 
+def _m4_intel_columns(c: sqlite3.Connection) -> None:
+    """Inputs for the price-intelligence engine: hours to finish (value per
+    hour), publisher (typical discount depth) and wishlist priority."""
+    cols = _cols(c, "products")
+    for nome, tipo in [("playtime_hours", "REAL"),
+                       ("publisher", "TEXT NOT NULL DEFAULT ''"),
+                       ("priority", "INTEGER NOT NULL DEFAULT 0")]:
+        if nome not in cols:
+            c.execute(f"ALTER TABLE products ADD COLUMN {nome} {tipo}")
+
+
 MIGRATIONS = [(1, _m1_ad_hoc_columns), (2, _m2_signals_compound_key),
-              (3, _m3_job_tables)]
+              (3, _m3_job_tables), (4, _m4_intel_columns)]
 LATEST_VERSION = MIGRATIONS[-1][0]
 
 
@@ -259,6 +273,27 @@ def set_ratings(product_id: str, rawg_id: int | None, metacritic: int | None,
         "ratings_count=?, popularity=?, relevance=?, released=? WHERE id=?",
         (rawg_id, metacritic, user_rating, ratings_count, popularity,
          relevance, released, product_id))
+    conn().commit()
+
+
+def set_playtime(product_id: str, hours: float | None) -> None:
+    if hours:
+        conn().execute("UPDATE products SET playtime_hours=? WHERE id=?",
+                       (float(hours), product_id))
+        conn().commit()
+
+
+def set_publisher(product_id: str, publisher: str) -> None:
+    if publisher:
+        conn().execute("UPDATE products SET publisher=? WHERE id=?",
+                       (publisher.strip(), product_id))
+        conn().commit()
+
+
+def set_priority(product_id: str, priority: int) -> None:
+    if priority not in (0, 1, 2):
+        raise ValueError("priority must be 0 (normal), 1 (high) or 2 (must have)")
+    conn().execute("UPDATE products SET priority=? WHERE id=?", (priority, product_id))
     conn().commit()
 
 

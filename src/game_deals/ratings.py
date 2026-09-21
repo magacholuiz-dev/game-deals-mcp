@@ -58,6 +58,8 @@ class Ficha:
     imagem: str
     plataformas: list[str]
     relevancia: float                # 0-100, combinação nota × popularidade
+    playtime_horas: float | None = None   # RAWG average hours; 0 means unknown
+    publishers: list[str] | None = None   # only present in the detail payload
 
     def dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -99,6 +101,8 @@ def _ficha(g: dict) -> Ficha:
                      for p in (g.get("parent_platforms") or g.get("platforms") or [])],
         relevancia=relevancia(int(mc) if mc else None,
                               float(nu) if nu else None, pop),
+        playtime_horas=float(g["playtime"]) if g.get("playtime") else None,
+        publishers=[p.get("name", "") for p in (g.get("publishers") or [])] or None,
     )
 
 
@@ -111,6 +115,16 @@ def _get(path: str, **params) -> dict:
         if r.status_code >= 400:
             return {"_error": r.status_code, "_body": r.text[:200]}
         return r.json() or {}
+
+
+def salvar(product_id: str, f: Ficha) -> None:
+    """Store everything a RAWG record gives us, in one place."""
+    from . import db
+    db.set_ratings(product_id, f.rawg_id, f.metacritic, f.nota_usuarios,
+                   f.avaliacoes, f.popularidade, f.relevancia, f.lancamento)
+    db.set_playtime(product_id, f.playtime_horas)
+    if f.publishers:
+        db.set_publisher(product_id, f.publishers[0])
 
 
 def refresh(rawg_id: int) -> Ficha | None:

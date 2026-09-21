@@ -83,7 +83,7 @@ CREATE INDEX IF NOT EXISTS idx_alerts_open ON alerts(acknowledged, ts);
 CREATE TABLE IF NOT EXISTS deal_signals (
   source       TEXT NOT NULL,
   source_id    TEXT NOT NULL,
-  product_id   TEXT,                       -- NULL = sinal ainda não casado
+  product_id   TEXT NOT NULL DEFAULT '',   -- '' = sinal ainda não casado
   title        TEXT NOT NULL,
   store        TEXT NOT NULL DEFAULT '',
   price_cents  INTEGER NOT NULL,
@@ -94,7 +94,9 @@ CREATE TABLE IF NOT EXISTS deal_signals (
   published_ts INTEGER NOT NULL DEFAULT 0,
   seen_ts      INTEGER NOT NULL,
   active       INTEGER NOT NULL DEFAULT 1,   -- 0 = oferta encerrada (histórica)
-  PRIMARY KEY (source, source_id)
+  -- A mesma oferta pode interessar a mais de um produto (GTA VI Standard e
+  -- Ultimate casam com as mesmas ofertas do varejo). A chave inclui o produto.
+  PRIMARY KEY (source, source_id, product_id)
 );
 CREATE INDEX IF NOT EXISTS idx_signals_prod ON deal_signals(product_id, price_cents);
 """
@@ -109,17 +111,31 @@ def conn() -> sqlite3.Connection:
         _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.execute("PRAGMA foreign_keys=ON")
+        # "Fresh" means no user tables at all. Looking for one specific table is
+        # fragile: a partially populated old file would be mistaken for new.
+        fresh = _conn.execute(
+            "SELECT COUNT(*) n FROM sqlite_master WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%'").fetchone()["n"] == 0
         _conn.executescript(SCHEMA)
-        _migrate(_conn)
+        _migrate(_conn, fresh)
         _conn.commit()
     return _conn
 
 
-def _migrate(c: sqlite3.Connection) -> None:
-    """Colunas adicionadas depois do primeiro release. CREATE TABLE IF NOT EXISTS
-    nao altera tabela existente, entao a adicao vai aqui."""
-    cols = {r["name"] for r in c.execute("PRAGMA table_info(products)").fetchall()}
-    novas = [
+# ---------------------------------------------------------------- migrations
+#
+# Each migration is idempotent and runs once, in order. `SCHEMA` above always
+# describes the LATEST shape for brand new databases, so a fresh file is marked
+# as fully migrated without running them; old files are upgraded step by step.
+
+def _cols(c: sqlite3.Connection, table: str) -> set[str]:
+    return {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _m1_ad_hoc_columns(c: sqlite3.Connection) -> None:
+    """Columns that were added with loose ALTER TABLE calls before versioning."""
+    cols = _cols(c, "products")
+    for nome, tipo in [
         ("image_url", "TEXT NOT NULL DEFAULT ''"),
         ("rawg_id", "INTEGER"),
         ("metacritic", "INTEGER"),
@@ -129,14 +145,51 @@ def _migrate(c: sqlite3.Connection) -> None:
         ("relevance", "REAL"),
         ("released", "TEXT NOT NULL DEFAULT ''"),
         ("compat", "TEXT NOT NULL DEFAULT ''"),
-    ]
-    for nome, tipo in novas:
+    ]:
         if nome not in cols:
             c.execute(f"ALTER TABLE products ADD COLUMN {nome} {tipo}")
-
-    sig = {r["name"] for r in c.execute("PRAGMA table_info(deal_signals)").fetchall()}
-    if sig and "active" not in sig:
+    if "active" not in _cols(c, "deal_signals"):
         c.execute("ALTER TABLE deal_signals ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+
+
+def _m2_signals_compound_key(c: sqlite3.Connection) -> None:
+    """deal_signals key (source, source_id) -> (source, source_id, product_id)."""
+    pk = [r["name"] for r in sorted(
+        c.execute("PRAGMA table_info(deal_signals)").fetchall(),
+        key=lambda r: r["pk"]) if r["pk"]]
+    if pk == ["source", "source_id", "product_id"]:
+        return
+    c.execute("ALTER TABLE deal_signals RENAME TO deal_signals_old")
+    c.execute("DROP INDEX IF EXISTS idx_signals_prod")
+    c.executescript(
+        SCHEMA[SCHEMA.index("CREATE TABLE IF NOT EXISTS deal_signals"):
+               SCHEMA.index("CREATE INDEX IF NOT EXISTS idx_signals_prod")]
+        + "CREATE INDEX IF NOT EXISTS idx_signals_prod "
+          "ON deal_signals(product_id, price_cents);")
+    c.execute(
+        "INSERT OR IGNORE INTO deal_signals(source,source_id,product_id,title,store,"
+        "price_cents,old_price_cents,discount_pct,url,image,published_ts,seen_ts,active)"
+        " SELECT source,source_id,COALESCE(product_id,''),title,store,price_cents,"
+        "old_price_cents,discount_pct,url,image,published_ts,seen_ts,active "
+        "FROM deal_signals_old")
+    c.execute("DROP TABLE deal_signals_old")
+
+
+MIGRATIONS = [(1, _m1_ad_hoc_columns), (2, _m2_signals_compound_key)]
+LATEST_VERSION = MIGRATIONS[-1][0]
+
+
+def _migrate(c: sqlite3.Connection, fresh: bool) -> None:
+    c.execute("CREATE TABLE IF NOT EXISTS schema_version("
+              "version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)")
+    have = {r["version"] for r in c.execute("SELECT version FROM schema_version")}
+    for version, fn in MIGRATIONS:
+        if version in have:
+            continue
+        if not fresh:
+            fn(c)
+        c.execute("INSERT INTO schema_version(version, applied_at) VALUES (?,?)",
+                  (version, int(time.time())))
 
 
 def now() -> int:
@@ -268,15 +321,16 @@ def upsert_signal(source: str, source_id: str, product_id: str | None,
                   url: str, image: str, published_ts: int,
                   active: bool = True) -> bool:
     """Grava o sinal. Devolve True se for NOVO (para decidir se alerta)."""
+    product_id = product_id or ""
     novo = conn().execute(
-        "SELECT 1 FROM deal_signals WHERE source=? AND source_id=?",
-        (source, source_id)).fetchone() is None
+        "SELECT 1 FROM deal_signals WHERE source=? AND source_id=? AND product_id=?",
+        (source, source_id, product_id)).fetchone() is None
     conn().execute(
         "INSERT INTO deal_signals(source,source_id,product_id,title,store,"
         "price_cents,old_price_cents,discount_pct,url,image,published_ts,seen_ts,"
         "active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) "
-        "ON CONFLICT(source,source_id) DO UPDATE SET price_cents=excluded.price_cents,"
-        " discount_pct=excluded.discount_pct, product_id=excluded.product_id,"
+        "ON CONFLICT(source,source_id,product_id) DO UPDATE SET "
+        "price_cents=excluded.price_cents, discount_pct=excluded.discount_pct,"
         " active=excluded.active",
         (source, source_id, product_id, title, store, price_cents,
          old_price_cents, discount_pct, url, image, published_ts, now(),

@@ -4,8 +4,11 @@ A serie temporal e o coracao do projeto. Sem ela nao existe "melhor preco em X".
 """
 from __future__ import annotations
 
+import os
 import sqlite3
+import tempfile
 import time
+from pathlib import Path
 from typing import Any, Iterable
 
 from . import config
@@ -135,9 +138,25 @@ CREATE TABLE IF NOT EXISTS job_state (
 _conn: sqlite3.Connection | None = None
 
 
+def _refuse_real_database_under_pytest(path: str) -> None:
+    """A test run must never open a real database. This is not a convention, it
+    is enforced: on 2026-09-21 a test suite emptied the author's real deals.db
+    because the path resolved to ./deals.db. Under pytest only a file inside the
+    system temp directory (or :memory:) is allowed."""
+    if not os.environ.get("PYTEST_CURRENT_TEST") or path == ":memory:":
+        return
+    real = Path(path).resolve()
+    tmp = Path(tempfile.gettempdir()).resolve()
+    if tmp not in real.parents and real != tmp:
+        raise RuntimeError(
+            f"refusing to open {real} from a test: it is not in the temp directory "
+            f"({tmp}). Use the scratch_db fixture.")
+
+
 def conn() -> sqlite3.Connection:
     global _conn
     if _conn is None:
+        _refuse_real_database_under_pytest(config.DB_PATH)
         _conn = sqlite3.connect(config.DB_PATH, check_same_thread=False)
         _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA journal_mode=WAL")

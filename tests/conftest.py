@@ -1,13 +1,54 @@
-"""Offline determinism: no test may touch the real network.
+"""Test isolation: no test may touch the real network OR the real database.
+
+THE ENVIRONMENT BELOW MUST BE SET BEFORE ANY game_deals IMPORT. config reads it
+once, at import. An earlier version of this file imported game_deals.http first,
+which froze DB_PATH at ./deals.db, and a test that empties every table then wiped
+the real database on each run. Do not move these lines below the imports.
+
+Offline determinism: no test may touch the real network.
 
 Every test starts with a default HTTP client whose transport raises. A test that
 needs HTTP installs its own client built from recorded fixtures (see helpers).
 Live probing exists only in scripts/probe.py, never in the test suite.
 """
-import httpx
-import pytest
+import hashlib
+import os
+import tempfile
+from pathlib import Path
 
-from game_deals import http
+_SANDBOX = Path(tempfile.mkdtemp(prefix="gamedeals-tests-"))
+os.environ["GAMEDEALS_DB"] = str(_SANDBOX / "session.db")
+os.environ["HTTP_CACHE_PATH"] = str(_SANDBOX / "http_cache.db")
+os.environ["GAMEDEALS_BACKUP_DIR"] = str(_SANDBOX / "backups")
+
+# The files a test run must never change. Recorded before anything runs and
+# compared at the end; a difference fails the whole session.
+_REPO = Path(__file__).resolve().parents[1]
+_GUARDED = [_REPO / "deals.db", _REPO / "deals.db-wal", _REPO / ".http_cache.db"]
+
+
+def _fingerprint():
+    out = {}
+    for p in _GUARDED:
+        out[p.name] = (hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None)
+    return out
+
+
+_BEFORE = _fingerprint()
+
+import httpx      # noqa: E402
+import pytest     # noqa: E402
+
+from game_deals import http   # noqa: E402
+
+
+def pytest_sessionfinish(session, exitstatus):
+    after = _fingerprint()
+    changed = [n for n in _BEFORE if _BEFORE[n] != after[n]]
+    if changed:
+        session.exitstatus = 1
+        print(f"\n\n!!! THE TEST RUN MODIFIED REAL FILES: {changed}\n"
+              "!!! A test wrote outside its sandbox. Fix that before trusting anything.")
 
 
 def _blocked(request: httpx.Request) -> httpx.Response:

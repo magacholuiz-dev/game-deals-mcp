@@ -48,6 +48,8 @@ NEGATIVE_TOKENS = {
     "headset", "fone", "suporte", "carregador", "cabo", "dock", "bateria",
     "teclado", "mouse", "monitor", "cooler", "ssd", "hd", "pendrive",
     "console", "videogame", "notebook",
+    # console SKUs: a listing that names a screen type or a bundle is hardware
+    "bundle", "oled", "lite", "lcd", "slim",
     # money, subscriptions, in-game currency
     "gift", "voucher", "credito", "creditos", "assinatura", "moedas", "moeda",
     "vbucks", "robux", "coins", "pontos", "points", "cash", "gold",
@@ -60,6 +62,8 @@ NEGATIVE_PHRASES = (
     "ps plus", "playstation plus", "nintendo switch online", "hd externo",
     "video game", "action figure", "kit de",
 )
+
+_CAPACITY = re.compile(r"\d+(?:gb|tb)")
 
 POSITIVE_PHRASES = ("midia fisica", "midia digital", "edicao standard",
                     "standard edition", "code in box", "codigo digital",
@@ -156,6 +160,9 @@ def negative_hits(offer_title: str, query_title: str = "") -> list[str]:
     query_norm = normalize(query_title)
     query_toks = set(query_norm.split())
     hits = [t for t in sorted(NEGATIVE_TOKENS & offer_toks) if t not in query_toks]
+    # Storage sizes ("256gb", "1tb") only appear on consoles, drives and cards.
+    hits += [t for t in sorted(offer_toks)
+             if _CAPACITY.fullmatch(t) and t not in query_toks]
     for phrase in NEGATIVE_PHRASES:
         if f" {phrase} " in f" {offer_norm} " and phrase not in query_norm:
             hits.append(phrase)

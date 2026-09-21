@@ -9,6 +9,7 @@ import sys
 import traceback
 
 from . import alerts, db, providers
+from .matching import price_band, within_band
 from .models import Offer, brl
 from .verdict import evaluate as verdict_for
 
@@ -34,49 +35,38 @@ def refresh_product(product_id: str, quiet: bool = True) -> list[Offer]:
     return offers
 
 
+def filtrar_por_preco(sinais: list, teto_cents: int | None = None,
+                      piso_cents: int | None = None) -> list:
+    """Drop listings whose price cannot be the product itself.
+
+    An explicit band (`teto`/`piso`, usually derived from a real store price)
+    wins. Without one the median of the matched listings estimates the product
+    and the cut is symmetric, see matching.price_band. Pure and unit tested."""
+    if teto_cents or piso_cents:
+        band = (piso_cents or 0, teto_cents or 10**12)
+    else:
+        band = price_band([x.price_cents for x in sinais])
+    return [x for x in sinais if within_band(x.price_cents, band)]
+
+
 def coletar_sinais(product_id: str, titulo: str,
                    teto_cents: int | None = None,
                    piso_cents: int | None = None) -> list[dict]:
-    """Ofertas da comunidade para um produto. Vai para `deal_signals`, nunca
-    para `price_points` — ver o docstring do provider promobit."""
+    """Community offers for a product. They go to `deal_signals`, never to
+    `price_points`: see the provider docstring for why."""
     novos: list[dict] = []
     for nome, prov in providers.feeds().items():
         try:
             sinais = (prov.sinais_do_titulo(titulo, 12)
                       if hasattr(prov, "sinais_do_titulo") else prov.sinais(titulo, 12))
-            # Sem oferta ativa o produto ficaria sem preco nenhum. As encerradas
-            # nao servem para comprar hoje, mas sao precos reais com data — o
-            # unico historico gratuito que existe para o varejo brasileiro.
-            if not sinais and hasattr(prov, "sinais_do_titulo"):
-                sinais = prov.sinais_do_titulo(titulo, 12, incluir_encerradas=True)
-        except Exception:
+        except Exception:                       # a broken feed must not stop the run
             continue
 
-        # Sem preco de loja nao ha ancora — e ai entra tanto o console de R$ 6.999
-        # na lista de um controle quanto o faceplate de R$ 15,83 na lista do GTA
-        # VI. A propria distribuicao serve de ancora: a mediana das ofertas
-        # casadas estima o produto, e o corte precisa ser SIMETRICO, porque o
-        # ruido aparece dos dois lados — acessorio barato e bundle caro.
-        if teto_cents is None and len(sinais) >= 3:
-            precos = sorted(x.price_cents for x in sinais)
-            mediana = precos[len(precos) // 2]
-            sinais = [x for x in sinais
-                      if mediana / 3 <= x.price_cents <= mediana * 3]
-
-        for s in sinais:
-            # Titulo nao separa acessorio de jogo: uma capinha de PS5 chamada
-            # "Faceplate GTA VI" casa com a mesma busca do jogo. A banda de preco
-            # corta o grosso (capinha de R$15 num jogo de R$350), e o card mostra
-            # o titulo da oferta para voce julgar o que sobrar.
-            if teto_cents and s.price_cents > teto_cents:
-                continue
-            if piso_cents and s.price_cents < piso_cents:
-                continue
+        for s in filtrar_por_preco(sinais, teto_cents, piso_cents):
             novo = db.upsert_signal(
                 s.source, s.source_id, product_id, s.titulo, s.loja,
                 s.price_cents, s.old_price_cents, s.desconto_pct, s.url,
                 s.imagem, s.publicado_ts, getattr(s, "ativa", True))
-            # Oferta encerrada e historico, nao noticia: grava mas nao alerta.
             if novo and getattr(s, "ativa", True):
                 novos.append({"loja": s.loja, "preco": brl(s.price_cents),
                               "titulo": s.titulo, "url": s.url,

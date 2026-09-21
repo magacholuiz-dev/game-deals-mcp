@@ -60,6 +60,34 @@ o slug contra a loja brasileira.
 | **Switch 2 Edition (upgrade)** | jogo de Switch 1 com pacote de melhoria pago |
 | **Switch 1 — roda no Switch 2** | retrocompatível |
 
+### Como o resolvedor da Nintendo acha o NSUID brasileiro
+
+1. Página do produto em `nintendo.com/pt-br/store/products/<slug>/`: o NSUID
+   está na URL da imagem do JSON-LD. O preço do JSON-LD é o **atual** (em
+   promoção, o promocional), então o preço de verdade vem da API de preço, que
+   também dá o preço cheio e a data de fim da promoção.
+2. Se o slug derivado não existe, o **sitemap** `pt-br/store/sitemap.xml`
+   (28 mil produtos) tem o slug real (`no-mans-sky-nintendo-switch-2-edition-switch-2`).
+3. Validação: o nome da página precisa conter as âncoras do título, a versão
+   (nativo, Edition, Switch 1) precisa bater, e o NSUID precisa **precificar em
+   BR**. NSUID europeu devolve `not_found` no Brasil, e é isso que o rejeita.
+
+Título fora do sitemap simplesmente não é vendido no Brasil (o *007 First Light*
+não estava lá), não é erro de slug.
+
+### PlayStation Store: edições, e por que não há descoberta
+
+Cada página de produto embute um cache com **todas** as edições, cada uma com
+preço, preço cheio e fim da promoção. O JSON-LD só descreve uma delas, que era o
+erro da versão anterior. Pedir uma edição que não existe devolve **nada** (e diz
+quais existem), e um conceito com mais de uma edição exige `id#edicao`
+(`10000730#ultimate`) ou `product/<id>`: um id ambíguo é recusado em vez de
+gravar o preço da Standard no produto Ultimate.
+
+Descoberta por categoria **não é possível**: as páginas de categoria e de ofertas
+devolvem a mesma casca renderizada no navegador, sem produto nenhum (conferido em
+três categorias), e não há sitemap. Os dados vêm de GraphQL com hash que rotaciona.
+
 ## Notas e popularidade
 
 `discover_top(platform="switch2"\|"ps5", min_metacritic=80)` ordena por
@@ -78,19 +106,18 @@ fica no topo.
 Precisa da chave gratuita do RAWG (`RAWG_API_KEY`, só e-mail) — sem ela,
 `discover_top` e `enrich_ratings` ficam inertes e o resto roda igual.
 
-## Histórico do varejo sem credencial nenhuma
+## Histórico do varejo: o que deixou de existir
 
-O Promobit devolve, junto das ofertas ativas, as **encerradas** — com preço, loja
-e data. Elas não servem para comprar hoje, mas são preços reais observados, e são
-o único histórico gratuito que existe para o varejo brasileiro.
+Uma versão anterior deste projeto guardava as ofertas **encerradas** do Promobit
+(com preço, loja e data) e as mostrava como "já esteve por". Isso vinha de
+`api.promobit.com.br`, cujo `robots.txt` proíbe qualquer acesso automatizado
+(`Disallow: /` para todos os agentes). O projeto se compromete a obedecer o
+`robots.txt`, então essa integração foi removida e o cliente HTTP recusa o host.
 
-O coletor só recorre a elas quando não há oferta ativa: sem isso o produto ficaria
-sem preço nenhum. Entram marcadas como `active=0`, aparecem no card numa seção
-própria — *"já esteve por"* — e **não disparam alerta**, porque oferta encerrada é
-histórico, não notícia.
-
-Foi o que resolveu a lacuna de Elden Ring e Baldur's Gate III: sem promoção ativa,
-mas com preços passados de Shopee, Magazine Luiza e Nuuvem, datados.
+Sem ela não há mais fonte gratuita de histórico do varejo brasileiro. O que
+existe hoje é o histórico que **o próprio coletor acumula** das lojas com API
+(eShop, PS Store, Steam). Linhas antigas de `deal_signals` marcadas como
+encerradas continuam legíveis, mas nenhuma nova é criada.
 
 ## Mercado Livre (opcional)
 
@@ -129,53 +156,72 @@ Duas armadilhas, se você voltar a isso: o ML **exige HTTPS** na URI de redirect
 `scripts/ml_auth.py` já sobe HTTPS local com certificado autoassinado), e o fluxo
 é **authorization_code**, não `client_credentials`.
 
-## Sites brasileiros: Promobit
+## Promobit: só a listagem pública
 
-O Promobit tem **API JSON pública** (`api.promobit.com.br/search`) e cobre de uma
-vez as lojas que não têm API própria:
+O que sobrou, e por quê. Medido em 21/09/2026:
 
-> KaBuM! · Netshoes · Magazine Luiza · Casas Bahia · Americanas · Amazon · Shopee
+- `api.promobit.com.br`: **proibido** pelo `robots.txt` (ver acima). Não é usado.
+- `www.promobit.com.br/promocoes/games/`: permitido. É renderizada no servidor e
+  traz as ofertas atuais em `__NEXT_DATA__`.
+- Limites reais: cerca de 12 ofertas por página, quase todas hardware e cartões;
+  `?page=` é ignorado pelo servidor; as subcategorias por plataforma dão 404; a
+  busca (`/buscar*`) é proibida.
 
-Integrar cada varejista separadamente daria muito mais trabalho e cobriria menos.
+Ou seja, o feed só percebe uma oferta que por acaso esteja na primeira página de
+games. Serve como pista, não como cobertura. Para cobertura confiável o caminho
+são os feeds de afiliado (Lomadee, Awin) ou uma fonte de loja.
 
-### Por que ele NÃO entra no histórico
+Como o site não pode ser buscado, o casamento é feito **localmente**, em
+`matching.py`, em três camadas testadas com títulos reais:
 
-Este provider tem `kind = "feed"`, e o coletor grava o que vem dele em
-`deal_signals` — **nunca** em `price_points`. A razão é o veredito:
+1. **Âncoras**: tokens distintivos do título pedido precisam aparecer; numerais
+   comparam como número ("VI" casa com "6", nunca com "V").
+2. **Marcadores negativos**: acessório, cartão presente, moeda de jogo, DLC,
+   console e bundle. Casam por palavra inteira e são ignorados quando fazem
+   parte do título pedido, senão o jogo *Grip* jamais casaria com nada. Pedir
+   "Hades" não aceita "Hades II".
+3. **Banda de preço**: com preço de loja de referência, uma fração dele; sem
+   referência, a mediana dos casados, com corte simétrico. Menos de três ofertas
+   não sustentam mediana, então nada é cortado.
 
-- os outros providers observam o preço de uma loja **periodicamente** — é uma série;
-- o Promobit traz oferta **postada por gente** — aparece uma vez e some;
-- o preço postado pode estar errado, expirado ou ser de vendedor duvidoso.
-
-Misturar as duas coisas envenenaria o "menor preço em X tempo", que depende de
-leituras regulares da mesma loja. No card eles aparecem numa seção separada,
-*Ofertas da comunidade*, e disparam alerta — mas não movem o histórico.
-
-### Dois filtros que o feed exige
-
-**Busca progressiva.** A busca do Promobit é literal: `"Zelda: Breath of the Wild"`
-devolve zero, `"zelda"` devolve dezenas. Consultamos do termo mais específico ao
-mais largo e paramos no primeiro que responde. A âncora do filtro é o termo que
-**casou**, não o mais largo — usar o mais largo deixava passar acessório.
-
-**Banda de preço.** Título não separa acessório de jogo: uma capa de PS5 chamada
-*"Faceplate GTA VI"* casa com a mesma busca do jogo. A banda (35%–125% do preço
-atual de loja) corta o grosso — a capa de R$ 15,83 num jogo de R$ 349 cai fora — e
-o card mostra o **título da oferta**, não só a loja, para você julgar o que sobrar.
-
-Nenhum dos dois é perfeito. Um acessório caro perto do preço do jogo ainda passa;
-por isso o card mostra o título e o rótulo é "sinal", não "preço".
+Continua sendo um *feed*: o que vem dele vai para `deal_signals`, nunca para
+`price_points`, porque um post de usuário não é uma leitura periódica da loja.
 
 ### Pelando
 
-`api-web.pelando.com.br` existe e responde, mas todos os caminhos REST testados
-devolvem 404 — deve ser GraphQL por POST. Não implementado.
+`api-web.pelando.com.br` responde, mas todos os caminhos REST testados devolvem
+404, provavelmente GraphQL por POST. Antes de implementar, ler o `robots.txt` do
+host: o precedente do Promobit mostra que um host de API pode estar fechado.
+
+## Rede, conformidade e fixtures
+
+**Toda a rede passa por `game_deals/http.py`**: no máximo 1 requisição por
+segundo por host, `robots.txt` lido e obedecido (interpretador próprio da RFC
+9309 em `robots.py`, porque o `urllib.robotparser` ignora curingas como
+`/buscar*`), cache condicional com `ETag` e `Last-Modified`, e um `User-Agent`
+que se identifica. Verifiquei que todos os hosts servem o mesmo conteúdo para
+esse agente, então não há disfarce nenhum. Um bloqueio vira `RobotsBlocked`, e
+não é contornado.
+
+**Os testes não usam a rede.** Um guard em `tests/conftest.py` derruba qualquer
+teste que tente. As respostas vêm de `tests/fixtures/`, gravadas ao vivo por
+`scripts/probe.py`, e `MANIFEST.json` guarda URL, data e sha256 de cada uma. Se
+alguém editar uma fixture à mão, `tests/test_manifest.py` falha.
+
+```bash
+uv run python scripts/probe.py nintendo --check    # os parsers de verdade leem a resposta ao vivo de hoje
+uv run python scripts/probe.py nintendo --record   # regrava as fixtures (recusa se o parser não lê)
+```
+
+Duas coisas que só apareceram porque as fixtures são reais: a normalização Unicode
+transformava `™` em "TM" ("Mario Kart™ World" virava "karttm"), e o apóstrofo
+separava "Man's" em duas palavras.
 
 ## Fontes
 
 | Fonte | Estado | O que precisa |
 |---|---|---|
-| **Promobit** | ✅ funciona sem chave | — (agrega KaBuM!, Netshoes, Magalu, Casas Bahia, Amazon, Shopee) |
+| **Promobit** | ⚠️ parcial, sem chave | só a listagem pública de games (~12 ofertas); a API é proibida por robots.txt |
 | **Steam BR** | ✅ funciona sem chave | — |
 | **PlayStation Store BR** | ✅ funciona sem chave | — (JSON-LD da página) |
 | **Nintendo eShop** | ✅ funciona sem chave | — (preço BR em BRL, com janela da promoção) |

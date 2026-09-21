@@ -127,3 +127,29 @@ def test_reference_price_gives_a_fixed_fraction_band():
 def test_too_few_listings_gives_no_band():
     assert price_band([34417, 699900]) is None
     assert within_band(699900, None)     # no band = nothing is cut
+
+
+def test_console_skus_are_hardware_even_without_the_word_console():
+    """Real listings, September 2026. The bundle used to be rejected only by luck
+    (it also said "assinatura"); the LCD console had no marker at all."""
+    for title in ("Nintendo Switch 2 LCD 256GB Novo",
+                  "Bundle Nintendo Switch + Super Mario Bros Wonder",
+                  "Console Portátil ROG Xbox Ally X Black 24GB RAM 1TB",
+                  "Nintendo Switch OLED Super Mario Bros NSO"):
+        assert negative_hits(title, "Super Mario Bros"), title
+
+
+def test_capacity_marker_is_ignored_when_the_query_asks_for_it():
+    assert negative_hits("Cartão SD 256gb", "Cartão SD 256gb") == []
+
+
+def test_collector_price_filter_uses_explicit_band_then_median():
+    from types import SimpleNamespace as S
+    from game_deals.collector import filtrar_por_preco
+    sinais = [S(price_cents=c) for c in (1583, 34417, 35565, 37640, 699900)]
+    # median band, symmetric: faceplate and console both go
+    assert [x.price_cents for x in filtrar_por_preco(sinais)] == [34417, 35565, 37640]
+    # an explicit band wins, even with too few listings for a median
+    two = [S(price_cents=c) for c in (1583, 34417)]
+    assert [x.price_cents for x in filtrar_por_preco(two, 44990, 15746)] == [34417]
+    assert len(filtrar_por_preco(two)) == 2            # no band possible: keep all

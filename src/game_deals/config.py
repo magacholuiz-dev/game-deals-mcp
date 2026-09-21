@@ -39,4 +39,9 @@ NTFY_TOPIC = _s("NTFY_TOPIC")
 MACOS_NOTIFY = _s("MACOS_NOTIFY", "0") == "1"
 
 HTTP_TIMEOUT = 20.0
-USER_AGENT = "game-deals-mcp/0.1 (+uso pessoal)"
+# We identify ourselves honestly. Every host we use serves the same content to
+# this agent as to a browser (verified), so there is no reason to pretend.
+USER_AGENT = ("game-deals-mcp/0.2 "
+              "(+https://github.com/magacholuiz-dev/game-deals-mcp; personal use)")
+HTTP_MIN_INTERVAL = float(_s("HTTP_MIN_INTERVAL", "1.0"))   # seconds per host
+HTTP_CACHE_PATH = _s("HTTP_CACHE_PATH", "./.http_cache.db")

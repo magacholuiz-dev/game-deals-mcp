@@ -99,6 +99,34 @@ CREATE TABLE IF NOT EXISTS deal_signals (
   PRIMARY KEY (source, source_id, product_id)
 );
 CREATE INDEX IF NOT EXISTS idx_signals_prod ON deal_signals(product_id, price_cents);
+
+-- Every collection attempt, per source. The scheduler, the health check and the
+-- gap-aware verdict all read this table, so it is the audit trail for "did we
+-- actually look, and how did it go".
+CREATE TABLE IF NOT EXISTS job_runs (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  source        TEXT NOT NULL,
+  kind          TEXT NOT NULL DEFAULT 'collect',
+  scheduled_for INTEGER,               -- the tick this run answers; NULL = manual
+  started_at    INTEGER NOT NULL,
+  finished_at   INTEGER,
+  status        TEXT NOT NULL,         -- running | ok | partial | failed | skipped
+  items         INTEGER NOT NULL DEFAULT 0,     -- offers or signals written
+  attempted     INTEGER NOT NULL DEFAULT 0,     -- products or aliases tried
+  failed        INTEGER NOT NULL DEFAULT 0,     -- those that hit a real failure
+  latency_ms    INTEGER,
+  error         TEXT NOT NULL DEFAULT '',
+  error_kind    TEXT NOT NULL DEFAULT ''        -- robots | http | timeout | drift | other
+);
+CREATE INDEX IF NOT EXISTS idx_job_runs_source ON job_runs(source, started_at);
+
+-- Circuit breaker and health memory, one row per job.
+CREATE TABLE IF NOT EXISTS job_state (
+  source               TEXT PRIMARY KEY,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  circuit_open_until   INTEGER NOT NULL DEFAULT 0,
+  last_health          TEXT NOT NULL DEFAULT ''
+);
 """
 
 _conn: sqlite3.Connection | None = None
@@ -175,7 +203,15 @@ def _m2_signals_compound_key(c: sqlite3.Connection) -> None:
     c.execute("DROP TABLE deal_signals_old")
 
 
-MIGRATIONS = [(1, _m1_ad_hoc_columns), (2, _m2_signals_compound_key)]
+def _m3_job_tables(c: sqlite3.Connection) -> None:
+    """job_runs and job_state. SCHEMA creates them with IF NOT EXISTS before any
+    migration runs, so an old database already has them; this step exists so the
+    version is recorded and future changes to them have a place to hang."""
+    c.execute("SELECT 1 FROM job_runs LIMIT 1")
+
+
+MIGRATIONS = [(1, _m1_ad_hoc_columns), (2, _m2_signals_compound_key),
+              (3, _m3_job_tables)]
 LATEST_VERSION = MIGRATIONS[-1][0]
 
 

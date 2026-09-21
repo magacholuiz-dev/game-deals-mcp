@@ -99,3 +99,22 @@ def test_replace_alias_keeps_a_single_alias_per_source(fresh_db):
     assert removed == 1
     ids = [a["source_id"] for a in db.aliases_for("p")]
     assert ids == ["10000730#ultimate"]
+
+
+def test_job_tables_exist_on_fresh_and_upgraded_databases(fresh_db):
+    db.conn()
+    for table in ("job_runs", "job_state"):
+        assert db.conn().execute(
+            "SELECT 1 FROM sqlite_master WHERE name=?", (table,)).fetchone()
+    assert db.LATEST_VERSION == 3
+
+
+def test_old_v2_database_gets_the_job_tables(fresh_db):
+    raw = sqlite3.connect(fresh_db)
+    raw.executescript(OLD_SCHEMA_SIGNALS)          # a v1-shaped file
+    raw.commit()
+    raw.close()
+    db.conn()
+    assert db.conn().execute(
+        "SELECT MAX(version) v FROM schema_version").fetchone()["v"] == 3
+    db.conn().execute("SELECT * FROM job_runs")     # does not raise

@@ -17,7 +17,7 @@ import unicodedata
 from dataclasses import dataclass
 
 from . import db, providers, ratings
-from .providers.promobit import ancora_forte, _tem_ancoras
+from .matching import anchors, has_anchors
 from .collector import coletar_sinais, refresh_product
 from .models import brl
 from .providers.nintendo import NATIVO, RETRO
@@ -46,7 +46,7 @@ def _bate(pedido: str, achado: str) -> bool:
     "Mario Kart 8 Deluxe" devolve "Mario Kart World" como primeiro resultado.
     Aceitar cegamente colava o preço de um jogo no card de outro — R$ 439,90 do
     World virava o preço do 8 Deluxe. Exigimos os tokens distintivos."""
-    return _tem_ancoras(achado, ancora_forte(pedido))
+    return has_anchors(achado, anchors(pedido))
 
 
 def _preco(pid: str, titulo: str, plataforma: str) -> tuple[int | None, str, int]:
